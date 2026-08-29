@@ -390,7 +390,7 @@ const META_KEY="pinballRogueMetaV5";
 const META_BACKUP_KEY=META_KEY+"_backup";
 function defaultMeta(){
   return { coin:0, lvlHp:0, lvlAtk:0, lvlHesso:0, lvlCrit:0, lvlBallSpeed:0, lvlGoldenLuck:0,
-    stats:{ runsPlayed:0, bestFloor:0, totalCoinsEarned:0, bestFeverCoin:0, bestCombo:0, bestFeverCombo:0, goldenStartTotal:0, bestDamage:0 } };
+    stats:{ runsPlayed:0, bestFloor:0, totalCoinsEarned:0, bestFeverCoin:0, bestCombo:0, bestFeverCombo:0, goldenStartTotal:0, bestDamage:0, bestRunCoins:0, bestBossKills:0 } };
 }
 let meta = loadMeta();
 function loadMeta(){
@@ -653,6 +653,70 @@ const GOLDEN_WARRIOR_LEVELS=[
   {lv:2,coinReq:50000,tagReq:5,divisor:500},
 ];
 
+/* ===== EQUIPMENT SYSTEM: stacks across the run, every boss floor (5F) grants one ===== */
+const EQUIP_SLOTS={WEAPON:1, ARMOR:1, ACCESSORY:2, ARTIFACT:2};
+// Equipment tags feed into the SAME buildTags counters used by powerups, so gear participates
+// in the existing set-bonus / cross-synergy system rather than a parallel one.
+const EQUIP_TAG_MAP={ATTACK:"ATTACK",LIFE:"DEFENSE",CRIT:"ATTACK",FIRE:"ATTACK",DOT:"ATTACK",
+  COIN:"COIN",GREED:"COIN",BALL:"BALL",MULTI:"BALL",FEVER:"FEVER",DEFENSE:"DEFENSE"};
+const EQUIPMENT_POOL=[
+  {id:"bloodSword",slot:"WEAPON",rarity:"rare",name:"⚔️ BLOOD SWORD",tags:["ATTACK","LIFE","CRIT"],
+    desc:"命中時、低確率で追加ダメージ。敵撃破時にHPを少量回復する",apply:p=>{p.eq_bloodSword=true;}},
+  {id:"flameCannon",slot:"WEAPON",rarity:"rare",name:"🔥 FLAME CANNON",tags:["ATTACK","FIRE","DOT"],
+    desc:"攻撃した敵を炎上させ、炎上中は継続ダメージ+追加ダメージを与える",apply:p=>{p.eq_flameCannon=true;}},
+  {id:"thunderHammer",slot:"WEAPON",rarity:"epic",name:"⚡ THUNDER HAMMER",tags:["ATTACK","BALL"],
+    desc:"一定回数ヒットするとCHAIN LIGHTNINGが発生し大ダメージ",apply:p=>{p.eq_thunderHammer=true;}},
+  {id:"iceWand",slot:"WEAPON",rarity:"rare",name:"❄️ ICE WAND",tags:["ATTACK","DEFENSE"],
+    desc:"敵の攻撃間隔を伸ばす（攻撃速度を低下させる）",apply:p=>{p.eq_iceWand=true;}},
+  {id:"goldenGun",slot:"WEAPON",rarity:"epic",name:"🪙 GOLDEN GUN",tags:["ATTACK","COIN","GREED"],
+    desc:"所持コインが多いほど攻撃力が上昇する（コインビルドと好相性）",apply:p=>{p.eq_goldenGun=true;}},
+  {id:"multiBallLauncher",slot:"WEAPON",rarity:"epic",name:"🎱 MULTI BALL LAUNCHER",tags:["BALL","MULTI","FEVER"],
+    desc:"同時発射数+1。DOUBLE/TRIPLE BALLと強力なシナジーを持つ",apply:p=>{p.eq_multiBallLauncher=true; p.simultaneousBalls=Math.min(5,p.simultaneousBalls+1);}},
+  {id:"cursedBlade",slot:"WEAPON",rarity:"legendary",name:"☠️ CURSED BLADE",tags:["ATTACK","LIFE"],isCursed:true,
+    desc:"攻撃力が大幅に上昇する",curse:"ただし装備中、一定時間ごとにHPを失う",
+    apply:p=>{p.atk=Math.round(p.atk*1.6); p.greedCurse=true;}},
+  {id:"goldenArmor",slot:"ARMOR",rarity:"rare",name:"🛡️ GOLDEN ARMOR",tags:["DEFENSE","COIN"],
+    desc:"被ダメージ軽減+コイン獲得量が上昇する",apply:p=>{p.damageReduction=Math.min(0.6,p.damageReduction+0.08); p.coinMultiplier*=1.15; p.eq_goldenArmor=true;}},
+  {id:"guardianPlate",slot:"ARMOR",rarity:"common",name:"🛡️ GUARDIAN PLATE",tags:["DEFENSE"],
+    desc:"最大HPが上昇し被ダメージも軽減される",apply:p=>{p.maxHp=Math.round(p.maxHp*1.2);p.hp=Math.min(p.maxHp,p.hp+Math.round(p.maxHp*0.2));p.damageReduction=Math.min(0.6,p.damageReduction+0.05);}},
+  {id:"criticalRing",slot:"ACCESSORY",rarity:"rare",name:"💍 CRITICAL RING",tags:["CRIT","ATTACK"],
+    desc:"クリティカル率とクリティカルダメージが上昇する",apply:p=>{p.critChance+=0.08; p.critDmgMult+=0.4;}},
+  {id:"vampireMask",slot:"ACCESSORY",rarity:"epic",name:"💍 VAMPIRE MASK",tags:["LIFE","ATTACK"],
+    desc:"敵撃破時のHP回復量が増加する",apply:p=>{p.eq_vampireMask=true;}},
+  {id:"greedRing",slot:"ACCESSORY",rarity:"rare",name:"💍 GREED RING",tags:["COIN","GREED"],
+    desc:"コイン獲得量が上昇する",apply:p=>{p.coinMultiplier*=1.25;}},
+  {id:"infernoRing",slot:"ACCESSORY",rarity:"epic",name:"💍 INFERNO RING",tags:["FIRE","DOT"],
+    desc:"炎上ダメージが強化される（FLAME CANNONと好相性）",apply:p=>{p.eq_infernoRing=true;}},
+  {id:"feverCrown",slot:"ARTIFACT",rarity:"epic",name:"👑 FEVER CROWN",tags:["FEVER","MULTI"],
+    desc:"FEVER時間が延長され、FEVER中の獲得コインが増加する",apply:p=>{p.feverExtraSec+=4; p.feverCoinBonus+=0.25;}},
+  {id:"comboArtifact",slot:"ARTIFACT",rarity:"rare",name:"🔮 RHYTHM CORE",tags:["ATTACK","BALL"],
+    desc:"通常コンボによる倍率ボーナスが強化される",apply:p=>{p.comboBonusMult+=0.2;}},
+  // high-floor exclusive artifacts
+  {id:"voidBlade",slot:"WEAPON",rarity:"legendary",name:"⚫ VOID BLADE",tags:["ATTACK"],minFloor:50,
+    desc:"敵の防御・軽減を一部無視して攻撃する（50F以降限定）",apply:p=>{p.eq_voidBlade=true;}},
+  {id:"timeCrown",slot:"ARTIFACT",rarity:"legendary",name:"⏳ TIME CROWN",tags:["FEVER"],minFloor:100,
+    desc:"FEVER時間・報酬に特大の補正がかかる（100F以降限定）",apply:p=>{p.feverExtraSec+=8; p.feverCoinBonus+=0.4;}},
+  {id:"infinityCore",slot:"ARTIFACT",rarity:"mythic",name:"♾️ INFINITY CORE",tags:["ATTACK","COIN"],minFloor:200,
+    desc:"現在のFLOORに応じて攻撃力とコイン獲得量が成長し続ける（200F以降限定）",apply:p=>{p.eq_infinityCore=true;}},
+  {id:"chaosArtifact",slot:"ARTIFACT",rarity:"mythic",name:"🌀 CHAOS ARTIFACT",tags:["ATTACK","COIN"],minFloor:500,isCursed:true,
+    desc:"非常に強力な全能力ボーナスを得る",curse:"ただし毎FLOORごとにランダムなデメリットが発生する（500F以降限定）",
+    apply:p=>{p.atk=Math.round(p.atk*1.5); p.coinMultiplier*=1.5; p.eq_chaosArtifact=true;}},
+];
+const EQUIP_SYNERGY_DEFS=[
+  {id:"goldenTycoon", need:()=>player.eq_goldenGun && (player.buildTags.COIN||0)>=5, name:"GOLDEN TYCOON",
+    desc:"コインを稼ぐほど攻撃力がさらに上昇する", apply:p=>p.eq_goldenTycoon=true},
+  {id:"ballStorm", need:()=>player.eq_multiBallLauncher && (player.buildTags.BALL||0)>=4, name:"BALL STORM",
+    desc:"一定確率で玉が追加生成されるようになる", apply:p=>p.eq_ballStorm=true},
+  {id:"inferno", need:()=>player.eq_flameCannon && player.eq_infernoRing, name:"INFERNO",
+    desc:"炎上ダメージが大幅に上昇する", apply:p=>p.eq_inferno=true},
+  {id:"bloodFrenzy", need:()=>player.eq_bloodSword && (player.buildTags.ATTACK||0)>=5, name:"BLOOD FRENZY",
+    desc:"クリティカル時にHP回復+追加攻撃が発生する", apply:p=>p.eq_bloodFrenzy=true},
+  {id:"goldenEmpire", need:()=>player.eq_goldenGun && player.eq_goldenArmor, name:"GOLDEN EMPIRE",
+    desc:"コイン獲得量が大幅に上昇する", apply:p=>p.coinMultiplier*=1.4},
+  {id:"vampireLord", need:()=>player.eq_bloodSword && player.eq_vampireMask, name:"VAMPIRE LORD",
+    desc:"敵撃破時のHP回復量がさらに増加する", apply:p=>p.eq_vampireLord=true},
+];
+
 const EVENTS=[
   {id:"golden",name:"✨ GOLDEN MACHINE",desc:"次の戦闘の敵撃破コインが2倍になる",apply:p=>p.nextRewardMult=(p.nextRewardMult||1)*2},
   {id:"myshole",name:"🕳️ MYSTERIOUS HOLE",desc:"次の戦闘のみSTARTが一時的に超巨大化する",apply:p=>p.tempHessoBoost=2.2},
@@ -670,8 +734,8 @@ function dungeonThemeForFloor(f){
 }
 function updateDungeonHeader(f){
   const theme=dungeonThemeForFloor(f);
-  dungeonFloorNum.textContent="FLOOR "+f;
-  dungeonThemeName.textContent=theme.name;
+  dungeonFloorNum.textContent="FLOOR "+f.toLocaleString();
+  dungeonThemeName.textContent=theme.name+"（"+difficultyTierName(f)+"）";
   dungeonBg.className=theme.cls;
   const nextIsBoss = (f+1)%5===0;
   bossWarn.classList.toggle("show", nextIsBoss);
@@ -788,23 +852,46 @@ function newPlayer(){
     unlockedSetBonuses:[], unlockedCrossSynergies:[], goldenWarriorLv:0,
     berserker:false, goldenBerserker:false, feverBank:false, feverStorm:false, ballCannon:false, revenge:false,
     cursedEnemyAtk:1, greedCurse:false, greedTimer:0, rerollCount:0,
+    equipment:{WEAPON:[],ARMOR:[],ACCESSORY:[],ARTIFACT:[]}, unlockedEquipSynergies:[],
+    eq_bloodSword:false, eq_flameCannon:false, eq_thunderHammer:false, eq_iceWand:false, eq_goldenGun:false,
+    eq_multiBallLauncher:false, eq_goldenArmor:false, eq_vampireMask:false, eq_infernoRing:false,
+    eq_voidBlade:false, eq_infinityCore:false, eq_chaosArtifact:false,
+    eq_goldenTycoon:false, eq_ballStorm:false, eq_inferno:false, eq_bloodFrenzy:false, eq_vampireLord:false,
     runStats:{totalDamage:0,maxCombo:0,grossGained:0,grossSpent:0,powerups:[],maxFloor:1,feverCount:0,bestFeverCoin:0,maxFeverCombo:0,goldenHitCount:0,enemiesKilled:0,bossesKilled:0}
   };
 }
 
+/* Soft-capped scaling value: growth is strong early, then eases off in stages so an infinite
+   climb never blows up numerically while still feeling stronger at every stage. */
+function scaledFloorValue(f){
+  if(f<=10) return f;
+  if(f<=25) return 10 + (f-10)*0.9;
+  if(f<=50) return 10+13.5 + (f-25)*0.65;
+  if(f<=100) return 10+13.5+16.25 + (f-50)*0.4;
+  return 10+13.5+16.25+20 + (f-100)*0.22;
+}
+function difficultyTierName(f){
+  if(f<=10) return "序盤";
+  if(f<=25) return "中盤";
+  if(f<=50) return "高難易度";
+  if(f<=100) return "ENDLESS";
+  return "ENDLESS+";
+}
 function enemyForFloor(f, type){
   let base;
   if(type==="boss"){ base = BOSSES[Math.floor((f/5-1))%BOSSES.length]; }
   else { const idx=(f-1)%ENEMIES.length; base=ENEMIES[idx]; }
-  const scale=1+(f-1)*0.13;
+  const sf=scaledFloorValue(f);
+  const scale=1+(sf-1)*0.13;
   let hp=Math.round(base.baseHp*scale);
-  let atk=Math.round((9+f*2.4)*(base.atkBoost||1));
-  let interval=base.atkInterval;
-  let coinReward=Math.round(base.coinReward*(1+(f-1)*0.15));
+  let atk=Math.round((9+sf*2.4)*(base.atkBoost||1));
+  let interval=Math.max(700, Math.round(base.atkInterval - sf*4)); // enemies attack a bit faster at higher floors too
+  let coinReward=Math.round(base.coinReward*(1+(sf-1)*0.15));
   if(type==="elite"){ hp=Math.round(hp*2.1); atk=Math.round(atk*1.4); interval=Math.round(interval*0.85); coinReward=Math.round(coinReward*2.2); }
-  if(type==="boss"){ hp=Math.round(hp*(1+Math.floor((f/5)-1)*0.5)); atk=Math.round(atk*1.6); }
+  if(type==="boss"){ const bossCycle=scaledFloorValue(Math.floor(f/5)); hp=Math.round(hp*(1+bossCycle*0.45)); atk=Math.round(atk*1.6); }
   if(player) atk=Math.round(atk*(player.cursedEnemyAtk||1));
-  const lv=Math.max(1, Math.floor(f*1.2));
+  if(player && player.eq_iceWand) interval=Math.round(interval*1.15);
+  const lv=Math.max(1, Math.floor(sf*1.2));
   return Object.assign({}, base, {maxHp:hp, hp:hp, atk, type, floor:f, lv, atkInterval:interval, atkTimer:interval, coinReward, _warned3:null});
 }
 
@@ -883,7 +970,7 @@ function withinGoldenHitbox(bx,by,br,s){
 }
 
 function spawnBall(){
-  const n=Math.max(1, player.simultaneousBalls);
+  const n=Math.max(1, player.simultaneousBalls) + ((player.eq_ballStorm && Math.random()<0.2)?1:0);
   for(let i=0;i<n;i++){
     if(balls.length>=60) break;
     balls.push({
@@ -1370,18 +1457,48 @@ function dealDamage(){
     const bonus=Math.min(1.0, Math.floor(player.runStats.grossGained/lvDef.divisor)*0.01);
     dmg *= (1+bonus);
   }
+  // GOLDEN GUN: scales with current coin (capped); GOLDEN TYCOON raises the cap
+  if(player.eq_goldenGun){
+    const cap=player.eq_goldenTycoon?0.9:0.5;
+    dmg *= 1 + Math.min(cap, player.coin/20000);
+  }
+  // INFINITY CORE: grows with how deep the run currently is
+  if(player.eq_infinityCore){ dmg *= 1 + Math.min(1.5, currentFloor*0.004); }
   let ballCannonHit=false;
   if(player.ballCannon && player.comboCount>0 && player.comboCount%4===0){ dmg*=1.5; ballCannonHit=true; }
+  let chainLightning=false;
+  if(player.eq_thunderHammer && player.comboCount>0 && player.comboCount%6===0){ dmg*=1.8; chainLightning=true; }
+  let bloodProc=false;
+  if(player.eq_bloodSword && Math.random()<0.15){ dmg*=1.4; bloodProc=true; }
   dmg=Math.max(1, Math.round(dmg));
 
   let finalDmg=dmg;
-  if(enemy.dmgReduction) finalDmg=finalDmg*(1-enemy.dmgReduction);
-  if(enemy.dmgBlock) finalDmg=Math.max(1, finalDmg-enemy.dmgBlock);
+  if(enemy.dmgReduction){
+    const ignore = player.eq_voidBlade? enemy.dmgReduction*0.5 : 0; // VOID BLADE ignores half of enemy damage reduction
+    finalDmg=finalDmg*(1-(enemy.dmgReduction-ignore));
+  }
+  if(enemy.dmgBlock){
+    const block = player.eq_voidBlade? enemy.dmgBlock*0.5 : enemy.dmgBlock;
+    finalDmg=Math.max(1, finalDmg-block);
+  }
+  // FLAME CANNON: ignites the enemy; each subsequent hit while burning adds bonus DOT-style damage
+  let burnBonus=0;
+  if(player.eq_flameCannon){
+    if(enemy.burning){ burnBonus=Math.round(finalDmg*(player.eq_inferno?0.6:0.3)); finalDmg+=burnBonus; }
+    enemy.burning=true;
+  }
   finalDmg=Math.round(finalDmg);
 
   enemy.hp=Math.max(0, enemy.hp-finalDmg);
   player.runStats.totalDamage += finalDmg;
   meta.stats.bestDamage=Math.max(meta.stats.bestDamage, finalDmg);
+
+  // BLOOD SWORD / BLOOD FRENZY: crit heals the player
+  if(isCrit && player.eq_bloodSword){
+    const heal=Math.round(player.maxHp*(player.eq_bloodFrenzy?0.03:0.015));
+    player.hp=Math.min(player.maxHp, player.hp+heal);
+    if(player.eq_bloodFrenzy) player._tempAtkBuff=(player._tempAtkBuff||1)+0.3;
+  }
 
   enemyVisual.classList.remove("hit"); void enemyVisual.offsetWidth; enemyVisual.classList.add("hit");
   shakeEnemy();
@@ -1389,7 +1506,10 @@ function dealDamage(){
   let cls = isCrit? "crit" : "";
   let label = finalDmg.toLocaleString();
   if(isCrit) label="CRITICAL!\n×"+player.critDmgMult.toFixed(1)+"\n-"+label;
+  else if(chainLightning){ label="CHAIN LIGHTNING!\n-"+label; cls="crit"; }
+  else if(bloodProc){ label="BLOOD SWORD!\n-"+label; cls="crit"; }
   else if(ballCannonHit){ label="BALL CANNON!\n-"+label; cls="crit"; }
+  else if(burnBonus>0){ label="🔥BURN!\n-"+label; cls="massive"; }
   else if(finalDmg > enemy.maxHp*0.35){ label="MASSIVE!!\n-"+label; cls="massive"; }
   popDamage(label, cls);
   if(isCrit) SE.crit();
@@ -1451,7 +1571,7 @@ function enemyAttack(){
 }
 
 /* ===================== ENEMY DOWN / FLOOR PROGRESSION ===================== */
-const MAX_FLOOR=30;
+const MAX_FLOOR=999999; // no real cap — floors are infinite; this only bounds the debug "jump to floor" input
 async function onEnemyDown(){
   running=false;
   const wasBoss = enemy.type==="boss";
@@ -1466,6 +1586,14 @@ async function onEnemyDown(){
   if(player.goldenBerserker){
     player.tempAtkBoost = Math.max(1, (player.tempAtkBoost||1)) + Math.min(0.8, coinGain*0.0006);
     toast("GOLDEN BERSERKER: 攻撃力に転化！");
+  }
+  if(player.eq_bloodSword || player.eq_vampireMask){
+    let healPct = 0;
+    if(player.eq_bloodSword) healPct += 0.03;
+    if(player.eq_vampireMask) healPct += 0.02;
+    if(player.eq_vampireLord) healPct *= 2;
+    const heal=Math.round(player.maxHp*healPct);
+    if(heal>0){ player.hp=Math.min(player.maxHp, player.hp+heal); popDamage("❤️+"+heal,"heal"); }
   }
 
   if(wasBoss){
@@ -1490,8 +1618,9 @@ async function onEnemyDown(){
   stopBossGimmick();
 
   await sleep(700);
-  if(wasBoss && currentFloor%10===0 && currentFloor<MAX_FLOOR){
-    await showMajorReward();
+  if(wasBoss){
+    if(currentFloor%10===0){ await showMajorReward(); }
+    await showEquipmentReward(currentFloor);
     await advanceAfterRoom();
     return;
   }
@@ -1506,7 +1635,6 @@ async function advanceAfterRoom(){
   currentFloor++;
   player.runStats.maxFloor=Math.max(player.runStats.maxFloor, currentFloor);
   meta.stats.bestFloor=Math.max(meta.stats.bestFloor, currentFloor);
-  if(currentFloor>MAX_FLOOR){ showEndModal(true); return; }
   await playFloorTransition(currentFloor);
   if(isBossFloor(currentFloor)){
     setupFloor(currentFloor,"boss");
@@ -1650,6 +1778,86 @@ function showMajorReward(){
   });
 }
 
+/* ===================== EQUIPMENT SYSTEM (every boss floor / 5F) ===================== */
+function equipRarityWeightsForFloor(f){
+  if(f<=5) return {common:50, rare:35, epic:12, legendary:3, mythic:0};
+  if(f<=10) return {common:25, rare:40, epic:28, legendary:7, mythic:0};
+  if(f<=15) return {common:10, rare:25, epic:45, legendary:18, mythic:2};
+  if(f<=20) return {common:5, rare:15, epic:35, legendary:35, mythic:10};
+  if(f<=25) return {common:2, rare:8, epic:25, legendary:40, mythic:25};
+  return {common:0, rare:5, epic:15, legendary:40, mythic:40};
+}
+function pickEquipmentCandidates(f, n){
+  const weights=equipRarityWeightsForFloor(f);
+  const pool=EQUIPMENT_POOL.filter(it=>!it.minFloor || f>=it.minFloor).slice();
+  const picks=[];
+  for(let i=0;i<n && pool.length>0;i++){
+    const total=pool.reduce((a,it)=>a+(weights[it.rarity]||1),0);
+    let r=Math.random()*total, idx=0;
+    for(;idx<pool.length-1;idx++){ const w=weights[pool[idx].rarity]||1; if(r<w) break; r-=w; }
+    picks.push(pool.splice(idx,1)[0]);
+  }
+  return picks;
+}
+function equipItem(item){
+  item.apply(player);
+  const list=player.equipment[item.slot];
+  list.push({id:item.id, name:item.name, rarity:item.rarity, tags:item.tags, slot:item.slot});
+  const cap=EQUIP_SLOTS[item.slot];
+  let replacedName=null;
+  if(list.length>cap){ replacedName=list.shift().name; } // display-only eviction — the item's effect stays active for the whole run
+  (item.tags||[]).forEach(t=>{
+    const mapped=EQUIP_TAG_MAP[t]||t;
+    if(player.buildTags[mapped]!==undefined) player.buildTags[mapped]++;
+  });
+  checkSetBonuses(); checkCrossSynergies(); checkCoinSynergies(); checkEquipSynergies();
+  updatePlayerBar();
+  saveRun(true);
+  return replacedName;
+}
+function checkEquipSynergies(){
+  if(!player) return;
+  EQUIP_SYNERGY_DEFS.forEach(def=>{
+    if(player.unlockedEquipSynergies.includes(def.id)) return;
+    if(def.need()){
+      player.unlockedEquipSynergies.push(def.id);
+      def.apply(player);
+      toast(`⚙️ EQUIP SYNERGY: ${def.name} 発動！`);
+      showBigMsg(def.name,"var(--neon-purple)");
+      SE.powerup();
+    }
+  });
+}
+function showEquipmentReward(f){
+  return new Promise(resolve=>{
+    const picks=pickEquipmentCandidates(f,3);
+    if(picks.length===0){ resolve(); return; }
+    const wrap=document.createElement("div");
+    wrap.className="puWrap";
+    wrap.innerHTML=`<div class="puBox"><h2>⚙️ EQUIPMENT REWARD</h2><div class="puSub">FLOOR ${f} BOSS撃破！ 装備を1つ選択してください</div><div id="eqCards"></div></div>`;
+    document.body.appendChild(wrap);
+    const cardsWrap=wrap.querySelector("#eqCards");
+    const slotLabel={WEAPON:"⚔️ 武器",ARMOR:"🛡️ 防具",ACCESSORY:"💍 アクセサリー",ARTIFACT:"🔮 アーティファクト"};
+    picks.forEach(item=>{
+      const card=document.createElement("div");
+      card.className="puCard "+item.rarity+(item.isCursed?" cursed":"");
+      card.innerHTML=`<div class="puRarity">${item.rarity.toUpperCase()} ／ ${slotLabel[item.slot]}</div>
+        <div class="puName">${item.name}</div><div class="puDesc">${item.desc}</div>
+        ${item.isCursed?`<div class="puCurse">⚠️ ${item.curse}</div>`:""}
+        <div class="puDesc" style="color:var(--neon-cyan);margin-top:2px;">タグ: ${(item.tags||[]).join(" / ")}</div>`;
+      card.addEventListener("click",()=>{
+        const replaced=equipItem(item);
+        SE.powerup();
+        showBigMsg("EQUIPMENT GET!\n"+item.name,"var(--neon-gold)");
+        if(replaced) toast(`${slotLabel[item.slot]}の上限のため「${replaced}」が表示欄から外れました（効果は継続します）`);
+        wrap.remove();
+        resolve();
+      });
+      cardsWrap.appendChild(card);
+    });
+  });
+}
+
 /* ===================== EVENT / POWERUP MODALS ===================== */
 function showEventModal(){
   releaseFire();
@@ -1738,6 +1946,15 @@ function setupFloor(f, type){
   } else {
     stopBossGimmick();
   }
+  if(player.eq_chaosArtifact){
+    const demerits=[
+      ()=>{ const d=Math.max(1,Math.round(player.maxHp*0.05)); player.hp=Math.max(1,player.hp-d); toast("🌀 CHAOS: HPが"+d+"減少した"); },
+      ()=>{ player.tempAtkBoost=(player.tempAtkBoost||1)*0.85; toast("🌀 CHAOS: 攻撃力が一時的に低下した"); },
+      ()=>{ enemy.atk=Math.round(enemy.atk*1.2); toast("🌀 CHAOS: 敵が強化された"); },
+    ];
+    demerits[Math.floor(Math.random()*demerits.length)]();
+    updatePlayerBar();
+  }
   running=true; paused=false;
   saveRun(true);
 }
@@ -1809,6 +2026,16 @@ buildBtn.addEventListener("click",()=>{
   const gwText = player.goldenWarriorLv>0
     ? `🪙 GOLDEN WARRIOR Lv.${player.goldenWarriorLv} 発動中`
     : `🪙 GOLDEN WARRIOR 未発動（累計コイン${Math.floor(player.runStats.grossGained).toLocaleString()} / ATTACK×${player.buildTags.ATTACK||0}）`;
+  const slotIcon={WEAPON:"⚔️",ARMOR:"🛡️",ACCESSORY:"💍",ARTIFACT:"🔮"};
+  const equipRows = Object.entries(player.equipment).map(([slot,list])=>{
+    const cap=EQUIP_SLOTS[slot];
+    const shown = list.length? list.map(it=>it.name).join(", ") : "（なし）";
+    return `${slotIcon[slot]} ${slot} (${list.length}/${cap}): ${shown}`;
+  }).join("<br>");
+  const equipSynHints = EQUIP_SYNERGY_DEFS.map(def=>{
+    const done=player.unlockedEquipSynergies.includes(def.id);
+    return done? `✅ ${def.name} — ${def.desc}` : `🔒 ${def.name}`;
+  }).join("<br>");
   const wrap=document.createElement("div");
   wrap.className="modalWrap";
   wrap.innerHTML=`<div class="modalBox">
@@ -1817,6 +2044,8 @@ buildBtn.addEventListener("click",()=>{
     <div class="synList"><b>SET BONUS</b><br>${unlockedSet}</div>
     <div class="synList"><b>SYNERGY</b><br>${crossHints}</div>
     <div class="synList">${gwText}</div>
+    <div class="synList"><b>EQUIPMENT</b><br>${equipRows}</div>
+    <div class="synList"><b>EQUIP SYNERGY</b><br>${equipSynHints}</div>
     <button class="modalBtn" id="buildClose">閉じる</button>
   </div>`;
   document.body.appendChild(wrap);
@@ -1887,10 +2116,12 @@ function showEndModal(cleared, manualExit){
   const netChange = Math.round((player.coin-player.startCoin)*10)/10;
   meta.stats.runsPlayed++;
   meta.stats.totalCoinsEarned += Math.max(0, Math.floor(netChange));
+  meta.stats.bestRunCoins = Math.max(meta.stats.bestRunCoins, Math.floor(netChange));
+  meta.stats.bestBossKills = Math.max(meta.stats.bestBossKills, player.runStats.bossesKilled);
   saveMeta();
   clearRunSave(); // this run is over — nothing left to CONTINUE
   const rows=[
-    ["到達FLOOR", player.runStats.maxFloor],
+    ["到達FLOOR", player.runStats.maxFloor.toLocaleString()],
     ["START時コイン", Math.floor(player.startCoin).toLocaleString()],
     ["RUN中の純増減", (netChange>=0?"+":"")+netChange.toLocaleString()],
     ["最終コイン（所持コインと同じ）", finalCoin.toLocaleString()],
@@ -1901,12 +2132,18 @@ function showEndModal(cleared, manualExit){
     ["最大ダメージ(一撃)", meta.stats.bestDamage.toLocaleString()],
     ["取得パワーアップ数", player.runStats.powerups.length],
   ];
+  const equipRows = Object.entries(player.equipment)
+    .flatMap(([slot,list])=>list.map(it=>`${it.name}`))
+    .join("<br>") || "なし";
+  const synergyNames = player.unlockedCrossSynergies.concat(player.unlockedEquipSynergies);
   const wrap=document.createElement("div");
   wrap.className="modalWrap";
   wrap.innerHTML=`<div class="modalBox runResult">
     <h2>${cleared? "🎉 RUN CLEAR!!": manualExit? "🚪 RUN COMPLETE":"💀 YOU DIED"}</h2>
     <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">RUN RESULT（ゲーム中の実際の増減をそのまま表示）</div>
     ${rows.map(([k,v],i)=>`<div class="statLine${i<=3?' highlight':''}"><span>${k}</span><b>${v}</b></div>`).join("")}
+    <div class="synList"><b>YOUR EQUIPMENT</b><br>${equipRows}</div>
+    <div class="synList"><b>SYNERGY</b><br>${synergyNames.length? synergyNames.join(" / ") : "なし"}</div>
     <button class="modalBtn" id="backTitle">タイトルへ戻る</button>
   </div>`;
   document.body.appendChild(wrap);
@@ -1938,7 +2175,7 @@ function renderTitle(){
     metaList.appendChild(row);
   });
   const s=meta.stats;
-  runHistoryBox.innerHTML = `過去のプレイ回数: ${s.runsPlayed}<br>最高到達FLOOR: ${s.bestFloor}　累計獲得コイン: ${s.totalCoinsEarned.toLocaleString()}<br>最大FEVER獲得: ${s.bestFeverCoin.toLocaleString()}　最大FEVERコンボ: ${s.bestFeverCombo}<br>最大通常コンボ: ${s.bestCombo}　GOLDEN START総数: ${s.goldenStartTotal}`;
+  runHistoryBox.innerHTML = `過去のプレイ回数: ${s.runsPlayed}<br>最高到達FLOOR: ${s.bestFloor.toLocaleString()}　累計獲得コイン: ${s.totalCoinsEarned.toLocaleString()}<br>最大FEVER獲得: ${s.bestFeverCoin.toLocaleString()}　最大FEVERコンボ: ${s.bestFeverCombo}<br>最大通常コンボ: ${s.bestCombo}　GOLDEN START総数: ${s.goldenStartTotal}<br>1RUN最高獲得コイン: ${s.bestRunCoins.toLocaleString()}　最多ボス撃破: ${s.bestBossKills}`;
   const snap=loadRunSnapshot();
   continueBtn.classList.toggle("hidden", !snap);
   if(snap && saveStatusEl){
@@ -2001,6 +2238,15 @@ function openDebugPanel(){
       <option value="battle">BATTLE</option><option value="treasure">TREASURE</option><option value="elite">ELITE</option>
       <option value="event">EVENT</option><option value="shop">SHOP</option></select>
       <button id="dbgForceRoute" style="flex:0 0 90px;">次の選択を強制</button></div>
+    <h3 style="margin-top:10px;">⚙️ EQUIPMENT DEBUG</h3>
+    <div class="dbgRow"><select id="dbgEquipSelect" style="flex:1;background:var(--bg-1);border:1px solid var(--line);color:var(--text);border-radius:6px;">
+      ${EQUIPMENT_POOL.map(it=>`<option value="${it.id}">${it.name} (${it.rarity}/${it.slot})</option>`).join("")}
+      </select>
+      <button id="dbgGiveEquip" style="flex:0 0 60px;">付与</button></div>
+    <button id="dbgGiveAllEquip">全装備を1つずつ付与</button>
+    <button id="dbgClearEquip">装備をすべて削除</button>
+    <button id="dbgForce5F">5F装備報酬を強制表示</button>
+    <button id="dbgForce10F">10F大型報酬を強制表示</button>
     <h3 style="margin-top:10px;">💾 SAVE DEBUG</h3>
     <button id="dbgSaveTest">SAVE TEST (保存→復元→照合)</button>
     <button id="dbgCorruptTest">セーブ破損テスト</button>
@@ -2062,6 +2308,31 @@ function openDebugPanel(){
   panel.querySelector("#dbgForceRoute").addEventListener("click",()=>{
     _forcedRouteType=panel.querySelector("#dbgRouteSelect").value;
     toast("次のルート選択を「"+_forcedRouteType.toUpperCase()+"」に固定");
+  });
+  panel.querySelector("#dbgGiveEquip").addEventListener("click",()=>{
+    if(!player){ toast("RUN中のみ実行できます"); return; }
+    const id=panel.querySelector("#dbgEquipSelect").value;
+    const item=EQUIPMENT_POOL.find(it=>it.id===id);
+    if(item){ equipItem(item); toast("装備付与: "+item.name); }
+  });
+  panel.querySelector("#dbgGiveAllEquip").addEventListener("click",()=>{
+    if(!player){ toast("RUN中のみ実行できます"); return; }
+    EQUIPMENT_POOL.forEach(item=>equipItem(item));
+    toast("全装備を付与しました（効果はすべて重複適用されます）");
+  });
+  panel.querySelector("#dbgClearEquip").addEventListener("click",()=>{
+    if(!player) return;
+    player.equipment={WEAPON:[],ARMOR:[],ACCESSORY:[],ARTIFACT:[]};
+    toast("装備欄の表示をクリアしました（既に適用済みの効果自体は残ります）");
+    updatePlayerBar(); saveRun(true);
+  });
+  panel.querySelector("#dbgForce5F").addEventListener("click", async ()=>{
+    if(!player) return;
+    await showEquipmentReward(currentFloor);
+  });
+  panel.querySelector("#dbgForce10F").addEventListener("click", async ()=>{
+    if(!player) return;
+    await showMajorReward();
   });
   panel.querySelector("#dbgSaveTest").addEventListener("click",()=>{
     if(!player){ toast("RUN中のみ実行できます"); return; }
