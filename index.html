@@ -1,0 +1,2113 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PINBALL ROGUE</title>
+<style>
+:root{
+  --neon-cyan:#00f0ff; --neon-pink:#ff2ec4; --neon-gold:#ffcc33; --neon-red:#ff3355;
+  --neon-green:#39ff8f; --neon-purple:#a855ff; --neon-blue:#3a7bff; --neon-orange:#ff8a3d;
+  --bg-0:#050308; --bg-1:#0c0a16; --panel:#100c1e; --line:#2a2440; --text:#eee8ff; --text-dim:#918aae;
+  --r-common:#8890b8; --r-rare:#3a9bff; --r-epic:#a855ff; --r-legendary:#ffcc33; --r-mythic:#ff2ec4;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;}
+html,body{margin:0;padding:0;height:100%;background:var(--bg-0);color:var(--text);
+  font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",-apple-system,BlinkMacSystemFont,sans-serif;overflow:hidden;}
+#app{position:fixed;inset:0;max-width:480px;margin:0 auto;display:flex;flex-direction:column;
+  background:radial-gradient(circle at 50% -10%, #1a1030 0%, var(--bg-0) 65%);}
+.screen{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.hidden{display:none !important;}
+
+/* TITLE / META */
+#titleScreen{padding:20px 16px 40px;text-align:center;}
+#titleScreen h1{font-size:25px;color:var(--neon-pink);text-shadow:0 0 14px var(--neon-pink);letter-spacing:1px;margin:6px 0 2px;}
+#titleScreen .sub{font-size:11px;color:var(--text-dim);margin-bottom:18px;}
+.metaBox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:left;margin-bottom:14px;}
+.metaBox h3{font-size:13px;color:var(--neon-cyan);margin:0 0 8px;}
+.metaRow{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px;}
+.metaRow .mBtn{background:var(--bg-1);border:1px solid var(--neon-gold);color:var(--neon-gold);border-radius:8px;padding:4px 10px;font-size:11px;}
+.metaRow .mBtn:disabled{opacity:.3;}
+#startRunBtn{width:100%;padding:15px;border-radius:12px;border:none;font-weight:900;font-size:16px;letter-spacing:2px;
+  background:linear-gradient(90deg,var(--neon-pink),var(--neon-purple));color:#fff;box-shadow:0 0 20px rgba(255,46,196,.4);}
+#continueBtn{width:100%;padding:14px;border-radius:12px;border:2px solid var(--neon-gold);font-weight:900;font-size:15px;
+  letter-spacing:1px;background:rgba(255,204,51,.12);color:var(--neon-gold);margin-bottom:10px;
+  box-shadow:0 0 16px rgba(255,204,51,.25);}
+#saveStatus{font-size:10px;color:var(--text-dim);margin-top:8px;}
+#metaCoinBar{font-size:13px;color:var(--neon-gold);margin-bottom:10px;}
+#runHistoryBox{font-size:10.5px;color:var(--text-dim);margin-top:14px;text-align:left;line-height:1.6;}
+
+/* GAME SCREEN */
+#gameScreenWrap{display:flex;}
+#gameScreen{display:flex;flex-direction:column;height:100%;width:100%;padding:6px 8px 8px;position:relative;}
+
+/* DUNGEON HEADER */
+#dungeonHeader{background:linear-gradient(180deg,#1a1408,#0c0a18);border:1px solid var(--neon-gold);border-radius:10px;
+  padding:5px 10px;margin-bottom:6px;text-align:center;flex-shrink:0;}
+#dungeonTitle{font-size:10px;letter-spacing:3px;color:var(--neon-gold);}
+#dungeonFloorRow{display:flex;align-items:baseline;justify-content:center;gap:8px;}
+#dungeonFloorNum{font-size:15px;font-weight:900;color:#fff;}
+#dungeonThemeName{font-size:9.5px;color:var(--text-dim);}
+#bossWarn{font-size:9.5px;color:var(--neon-red);font-weight:800;opacity:0;height:0;overflow:hidden;transition:all .2s;}
+#bossWarn.show{opacity:1;height:14px;}
+
+/* RPG STATUS BAR */
+#playerBar{background:linear-gradient(180deg,#140f26,#0c0a18);border:1px solid var(--neon-purple);border-radius:12px;
+  padding:8px 10px;margin-bottom:6px;flex-shrink:0;box-shadow:0 0 14px rgba(168,85,255,.15);position:relative;}
+#menuBtn{position:absolute;top:6px;right:8px;background:var(--bg-1);border:1px solid var(--line);color:var(--text);
+  border-radius:8px;padding:3px 8px;font-size:12px;}
+#buildBtn{position:absolute;top:6px;right:76px;background:var(--bg-1);border:1px solid var(--neon-purple);color:var(--neon-purple);
+  border-radius:8px;padding:3px 8px;font-size:11px;}
+#speedBtn{position:fixed;top:6px;left:6px;z-index:50;background:rgba(16,12,30,.9);border:1px solid var(--neon-cyan);
+  color:var(--neon-cyan);border-radius:8px;padding:4px 9px;font-size:11px;font-weight:800;
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;max-width:480px;margin-left:calc(50% - 240px);}
+@media (max-width:480px){ #speedBtn{ margin-left:0; } }
+#pTop{display:flex;align-items:center;gap:8px;}
+#pIcon{font-size:20px;}
+#pName{font-size:12px;font-weight:800;color:var(--neon-cyan);}
+#hpBarWrap{height:9px;background:var(--bg-1);border-radius:5px;overflow:hidden;border:1px solid var(--line);margin:6px 0 5px;}
+#hpBar{height:100%;background:linear-gradient(90deg,var(--neon-red),var(--neon-gold));width:100%;transition:width .4s;}
+#hpBar.fullheal{transition:width 1.1s cubic-bezier(.2,.9,.3,1);}
+#hpText{font-size:9.5px;color:var(--text-dim);text-align:right;margin-top:-4px;margin-bottom:4px;}
+#pStatsGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;font-size:8.5px;text-align:center;}
+#pStatsGrid div{background:var(--bg-1);border-radius:6px;padding:3px 2px;}
+#pStatsGrid div b{display:block;font-size:11.5px;color:var(--neon-cyan);}
+#pStatsGrid div.coinBox b{color:var(--neon-gold);}
+#feverStripe{margin-top:6px;text-align:center;font-size:11px;font-weight:900;color:var(--neon-orange);
+  letter-spacing:2px;opacity:0;height:0;overflow:hidden;transition:all .25s;}
+#feverStripe.show{opacity:1;height:18px;text-shadow:0 0 8px var(--neon-orange);animation:feverPulse .5s infinite alternate;}
+@keyframes feverPulse{from{transform:scale(1);}to{transform:scale(1.05);}}
+
+/* ENEMY CARD */
+#enemyBar{background:linear-gradient(180deg,#20101a,#0c0a18);border:1px solid var(--neon-red);border-radius:12px;
+  padding:7px 10px;margin-bottom:6px;flex-shrink:0;}
+#enemyBar.paused{opacity:.45;}
+#enemyBar.bossbar{border-color:var(--neon-gold);box-shadow:0 0 12px rgba(255,204,51,.3);}
+#eTop{display:flex;justify-content:space-between;align-items:center;font-size:11px;}
+#eName{font-weight:800;}
+#eLv{color:var(--neon-gold);font-size:10px;}
+#enemyHpWrap{height:8px;background:var(--bg-1);border:1px solid var(--line);border-radius:5px;overflow:hidden;margin:5px 0 3px;}
+#enemyHpBar{height:100%;background:linear-gradient(90deg,var(--neon-red),var(--neon-orange));width:100%;transition:width .3s;}
+#eBottom{display:flex;justify-content:space-between;font-size:9.5px;color:var(--text-dim);}
+#nextAttackVal{font-weight:800;}
+#nextAttackVal.warn{color:var(--neon-gold);}
+#nextAttackVal.danger{color:var(--neon-red);animation:blinkWarn .4s infinite alternate;}
+@keyframes blinkWarn{from{opacity:1;}to{opacity:.4;}}
+
+/* ENEMY VISUAL + BOARD OVERLAY */
+#enemyBarInner{display:flex;align-items:center;gap:8px;}
+#enemyVisual{flex:0 0 auto;font-size:30px;line-height:1;display:inline-block;
+  filter:drop-shadow(0 0 8px rgba(255,51,85,.5));}
+#enemyVisual.boss{font-size:38px;filter:drop-shadow(0 0 12px rgba(255,204,51,.7));}
+#enemyVisual.shake{animation:eShake .3s;}
+@keyframes eShake{0%,100%{transform:translate(0,0);}25%{transform:translate(-4px,2px);}75%{transform:translate(4px,-2px);}}
+#enemyVisual.hit{animation:eHit .2s;}
+@keyframes eHit{0%{transform:scale(1);}50%{transform:scale(.85);filter:brightness(2);}100%{transform:scale(1);}}
+#enemyBarInfo{flex:1;min-width:0;}
+#dmgPopupLayer{position:absolute;inset:0;pointer-events:none;z-index:4;}
+.dmgPopup{position:absolute;font-weight:900;font-size:13px;color:#fff;text-shadow:0 0 6px #000;text-align:center;
+  animation:dmgFloat 0.9s ease-out forwards;white-space:pre-line;}
+.dmgPopup.crit{font-size:18px;color:var(--neon-red);}
+.dmgPopup.coin{font-size:15px;color:var(--neon-gold);}
+.dmgPopup.coinbig{font-size:20px;color:var(--neon-gold);}
+.dmgPopup.massive{font-size:21px;color:var(--neon-red);}
+.dmgPopup.heal{font-size:18px;color:var(--neon-green);}
+@keyframes dmgFloat{0%{opacity:1;transform:translateY(0);}100%{opacity:0;transform:translateY(-42px);}}
+#bigMsg{position:absolute;top:30%;left:0;right:0;text-align:center;font-size:16px;font-weight:900;
+  text-shadow:0 0 10px currentColor;opacity:0;z-index:6;pointer-events:none;white-space:pre-line;}
+#bigMsg.show{animation:bigMsgPop .9s ease-out forwards;}
+@keyframes bigMsgPop{0%{opacity:0;transform:scale(.5);}25%{opacity:1;transform:scale(1.15);}70%{opacity:1;}100%{opacity:0;transform:scale(1);}}
+#warnFlash{position:absolute;inset:0;background:rgba(255,51,85,.18);opacity:0;pointer-events:none;z-index:5;}
+#warnFlash.show{animation:warnFlashAnim .5s;}
+@keyframes warnFlashAnim{0%{opacity:0;}30%{opacity:1;}100%{opacity:0;}}
+
+#comboLabel{position:absolute;top:40px;left:0;right:0;text-align:center;font-size:12px;color:var(--neon-green);
+  font-weight:800;opacity:0;transition:opacity .2s;z-index:4;}
+#comboLabel.show{opacity:1;}
+#comboLabel.fever{color:var(--neon-orange);}
+
+#feverTimerBig{position:absolute;top:2px;left:0;right:0;text-align:center;z-index:7;opacity:0;pointer-events:none;transition:opacity .2s;}
+#feverTimerBig.show{opacity:1;}
+#feverTimerBig .ftLabel{font-size:11px;font-weight:900;color:var(--neon-orange);letter-spacing:3px;text-shadow:0 0 8px var(--neon-orange);}
+#feverTimerBig .ftSec{font-size:22px;font-weight:900;color:#fff;text-shadow:0 0 10px var(--neon-gold);}
+#feverTimerBig .ftCoin{font-size:11px;color:var(--neon-gold);}
+#feverZoneLabel{position:absolute;left:0;right:0;text-align:center;font-size:9px;letter-spacing:2px;color:var(--neon-orange);
+  opacity:0;z-index:6;pointer-events:none;text-shadow:0 0 6px var(--neon-orange);}
+#feverZoneLabel.show{opacity:.85;}
+
+#boardWrap{position:relative;flex:1;min-height:0;border-radius:14px;overflow:hidden;border:2px solid var(--line);
+  background:#050512;box-shadow:0 0 24px rgba(0,0,0,.6) inset;}
+#boardWrap.feverGlow{border-color:var(--neon-orange);box-shadow:0 0 24px rgba(255,138,61,.4) inset, 0 0 18px rgba(255,138,61,.4);}
+#dungeonBg{position:absolute;inset:0;z-index:0;transition:background 0.6s;}
+#dungeonBg.ruins{background:radial-gradient(circle at 50% 0%,#2a2210 0%,#120e08 55%,#050512 100%);}
+#dungeonBg.cavern{background:radial-gradient(circle at 50% 0%,#0e2224 0%,#08161a 55%,#050512 100%);}
+#dungeonBg.castle{background:radial-gradient(circle at 50% 0%,#2a0e1e 0%,#160a1a 55%,#050512 100%);}
+#dungeonBg.boss{background:radial-gradient(circle at 50% 0%,#3a1008 0%,#1a0a10 55%,#050512 100%);}
+#pegCanvas{position:absolute;inset:0;width:100%;height:100%;display:block;z-index:1;}
+#toastArea{position:absolute;top:4px;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:4px;z-index:15;pointer-events:none;}
+.toast{background:var(--panel);border:1px solid var(--neon-gold);color:var(--neon-gold);font-size:10.5px;padding:4px 10px;
+  border-radius:16px;box-shadow:0 0 8px rgba(255,204,51,.4);animation:toastIn .3s, toastOut .3s 2s forwards;}
+@keyframes toastIn{from{opacity:0;transform:translateY(-8px);}to{opacity:1;transform:translateY(0);}}
+@keyframes toastOut{to{opacity:0;transform:translateY(-8px);}}
+#goldenBanner{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;
+  background:rgba(0,0,0,.55);opacity:0;z-index:16;pointer-events:none;}
+#goldenBanner .gbText{font-size:20px;font-weight:900;letter-spacing:2px;color:var(--neon-gold);text-shadow:0 0 16px var(--neon-gold);text-align:center;padding:0 10px;white-space:pre-line;}
+#floorTransition{position:absolute;inset:0;background:#000;display:flex;align-items:center;justify-content:center;
+  flex-direction:column;opacity:0;z-index:18;pointer-events:none;transition:opacity .3s;}
+#floorTransition .ftDoor{font-size:30px;}
+#floorTransition .ftText{font-size:13px;color:var(--neon-gold);letter-spacing:2px;margin-top:6px;}
+
+/* controls */
+#controls{display:none;}
+#mainControlsRow{display:flex;gap:7px;}
+#shootBtn{flex:1;height:58px;border-radius:14px;border:2px solid rgba(255,255,255,.25);font-size:17px;
+  background:linear-gradient(180deg,var(--neon-pink),#a1006f);color:#fff;box-shadow:0 4px 0 #6e004c,0 0 16px rgba(255,46,196,.5);
+  position:relative;overflow:hidden;
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;-webkit-tap-highlight-color:transparent;}
+#shootBtn:active{transform:translateY(3px);box-shadow:0 1px 0 #6e004c;}
+#shootBtn.auto{background:linear-gradient(180deg,var(--neon-green),#0a8a3a);box-shadow:0 4px 0 #075c26,0 0 16px rgba(57,255,143,.5);}
+#shootBtn.fever{background:linear-gradient(180deg,var(--neon-orange),#a3450a);box-shadow:0 4px 0 #6e2f06,0 0 20px rgba(255,138,61,.6);}
+#shootBtn.nocoin{background:linear-gradient(180deg,#555,#222);box-shadow:0 4px 0 #111;}
+#shootBtn.idleoff{opacity:.5;}
+#shootBtnInner{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:6px;
+  pointer-events:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
+.btnLabel{
+  pointer-events:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+  font-weight:900;letter-spacing:4px;color:transparent;
+  -webkit-text-stroke:2px #ffffff;
+  paint-order:stroke fill;
+  text-shadow:0 0 8px rgba(255,255,255,.5);
+}
+#shootBtn.fever .btnLabel{-webkit-text-stroke-color:#fff2d8;}
+.boltIcon{pointer-events:none;user-select:none;-webkit-user-select:none;font-size:15px;filter:drop-shadow(0 0 4px rgba(255,255,255,.6));}
+
+/* POWERUP MODAL */
+.puWrap{position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;z-index:120;padding:16px;}
+.puBox{max-width:440px;width:100%;text-align:center;}
+.puBox h2{color:var(--neon-gold);font-size:18px;text-shadow:0 0 10px var(--neon-gold);margin-bottom:4px;}
+.puBox .puSub{font-size:11px;color:var(--text-dim);margin-bottom:14px;}
+.puCard{background:var(--panel);border:2px solid var(--r-common);border-radius:14px;padding:14px;margin-bottom:10px;
+  text-align:left;cursor:pointer;transition:transform .15s;}
+.puCard:active{transform:scale(.97);}
+.puCard.rare{border-color:var(--r-rare);box-shadow:0 0 10px rgba(58,155,255,.25);}
+.puCard.epic{border-color:var(--r-epic);box-shadow:0 0 12px rgba(168,85,255,.3);}
+.puCard.legendary{border-color:var(--r-legendary);box-shadow:0 0 14px rgba(255,204,51,.35);}
+.puCard.mythic{border-color:var(--r-mythic);box-shadow:0 0 16px rgba(255,46,196,.4);}
+.puCard.cursed{border-color:var(--neon-red);box-shadow:0 0 16px rgba(255,51,85,.45);
+  background:linear-gradient(180deg,var(--panel),#2a0810);}
+.puCard.cursed .puRarity{color:var(--neon-red);}
+.puCard .puCurse{font-size:10px;color:var(--neon-red);margin-top:4px;font-weight:700;}
+.puCard .puRarity{font-size:8.5px;letter-spacing:1px;font-weight:800;}
+.puCard.common .puRarity{color:var(--r-common);}
+.puCard.rare .puRarity{color:var(--r-rare);}
+.puCard.epic .puRarity{color:var(--r-epic);}
+.puCard.legendary .puRarity{color:var(--r-legendary);}
+.puCard.mythic .puRarity{color:var(--r-mythic);}
+.puCard .puName{font-size:14px;font-weight:800;color:var(--text);margin-top:2px;}
+.puCard .puCat{font-size:9.5px;color:var(--neon-cyan);letter-spacing:1px;}
+.puCard .puDesc{font-size:11px;color:var(--text-dim);margin-top:4px;}
+
+/* GENERIC MODAL */
+.modalWrap{position:fixed;inset:0;background:rgba(0,0,0,.78);display:flex;align-items:center;justify-content:center;z-index:120;padding:16px;}
+.modalBox{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;max-width:420px;width:100%;
+  max-height:85vh;overflow-y:auto;text-align:center;}
+.modalBox h2{margin:0 0 10px;font-size:17px;color:var(--neon-pink);}
+.modalBox.feverResult h2{color:var(--neon-orange);}
+.modalBox.runResult h2{color:var(--neon-gold);}
+.modalBtn{width:100%;margin-top:10px;padding:11px;border-radius:10px;border:none;background:var(--neon-pink);color:#fff;font-weight:800;}
+.modalBtn.secondary{background:var(--bg-1);border:1px solid var(--line);color:var(--text);}
+.statLine{display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid var(--line);}
+.statLine.highlight{color:var(--neon-gold);font-weight:800;}
+.puListSmall{text-align:left;font-size:11px;color:var(--text-dim);max-height:160px;overflow-y:auto;margin-top:8px;}
+.routeCard{background:var(--panel);border:2px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;
+  text-align:left;cursor:pointer;}
+.routeCard:active{transform:scale(.97);}
+.routeCard .rIcon{font-size:22px;}
+.routeCard .rName{font-size:14px;font-weight:800;margin-top:2px;}
+.routeCard .rDesc{font-size:11px;color:var(--text-dim);margin-top:4px;}
+.tagRow{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px;}
+.tagRow .tagBar{flex:1;height:6px;background:var(--bg-1);border-radius:4px;overflow:hidden;margin:0 8px;}
+.tagRow .tagBarFill{height:100%;background:var(--neon-cyan);}
+.synList{font-size:11px;color:var(--neon-gold);margin-top:6px;line-height:1.6;}
+.shopItem{display:flex;justify-content:space-between;align-items:center;background:var(--bg-1);border:1px solid var(--line);
+  border-radius:10px;padding:8px 10px;margin-bottom:7px;font-size:12px;}
+.shopItem button{background:var(--neon-gold);border:none;color:#1a1200;font-weight:800;border-radius:8px;padding:5px 10px;font-size:11px;}
+.shopItem button:disabled{opacity:.35;}
+.coinLogLine{display:flex;justify-content:space-between;font-size:10px;padding:3px 0;border-bottom:1px solid var(--line);font-family:monospace;}
+
+#debugPanel{position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#05060f;
+  border-top:2px solid var(--neon-green);padding:10px;z-index:200;max-height:65vh;overflow-y:auto;}
+#debugPanel h3{color:var(--neon-green);font-size:12px;margin:0 0 8px;}
+#debugPanel button{display:block;width:100%;margin-bottom:5px;padding:7px;background:var(--bg-1);border:1px solid var(--neon-green);
+  color:var(--neon-green);border-radius:7px;font-size:10px;}
+#debugPanel .dbgRow{display:flex;gap:5px;}
+#debugPanel input{flex:1;background:var(--bg-1);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px;font-size:10px;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- TITLE / META PROGRESSION -->
+  <div class="screen" id="titleScreen">
+    <h1>⚔️🎰 PINBALL ROGUE</h1>
+    <div class="sub">玉を器型のSTARTへ入れて、ダンジョンの敵を倒しコインを稼ぐローグライクRPG</div>
+    <div id="metaCoinBar">🪙 コイン: <b id="metaCoinVal">0</b></div>
+    <div class="metaBox">
+      <h3>恒久強化</h3>
+      <div id="metaList"></div>
+    </div>
+    <button id="continueBtn" class="hidden">▶ CONTINUE — 前回のRUNを再開</button>
+    <button id="startRunBtn">潜行開始 (NEW RUN)</button>
+    <div id="saveStatus"></div>
+    <div id="runHistoryBox"></div>
+  </div>
+
+  <!-- GAME -->
+  <div class="screen hidden" id="gameScreenWrap">
+    <div id="gameScreen">
+
+      <div id="dungeonHeader">
+        <div id="dungeonTitle">🏰 DUNGEON</div>
+        <div id="dungeonFloorRow"><span id="dungeonFloorNum">FLOOR 1</span><span id="dungeonThemeName">古代遺跡</span></div>
+        <div id="bossWarn">⚠️ BOSS NEXT FLOOR</div>
+      </div>
+
+      <div id="playerBar">
+        <button id="menuBtn">☰ MENU</button>
+        <button id="buildBtn">🧩 BUILD</button>
+        <div id="pTop">
+          <div id="pIcon">⚔️</div>
+          <div id="pName">HERO</div>
+        </div>
+        <div id="hpBarWrap"><div id="hpBar"></div></div>
+        <div id="hpText"><span id="hpVal">0/0</span></div>
+        <div id="pStatsGrid">
+          <div>⚔️ ATK<b id="atkVal">0</b></div>
+          <div>💥 DMG<b id="multVal">×1.0</b></div>
+          <div>🎯 CRIT<b id="critVal">5%</b></div>
+          <div>◎ HOLE<b id="holeVal">100%</b></div>
+          <div class="coinBox">🪙 COIN<b id="coinVal">0</b></div>
+        </div>
+        <div id="feverStripe">🔥 FEVER TIME 🔥</div>
+      </div>
+
+      <div id="enemyBar">
+        <div id="enemyBarInner">
+          <div id="enemyVisual">👹</div>
+          <div id="enemyBarInfo">
+            <div id="eTop"><span id="eName">ENEMY</span><span id="eLv">LV.1</span></div>
+            <div id="enemyHpWrap"><div id="enemyHpBar"></div></div>
+            <div id="eBottom"><span id="enemyHpText">100/100</span><span>⏱ NEXT ATTACK <b id="nextAttackVal">-</b></span></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="boardWrap">
+        <div id="dungeonBg" class="ruins"></div>
+        <canvas id="pegCanvas"></canvas>
+        <div id="dmgPopupLayer"></div>
+        <div id="comboLabel"></div>
+        <div id="bigMsg"></div>
+        <div id="warnFlash"></div>
+        <div id="feverTimerBig"><div class="ftLabel">🔥 FEVER TIME 🔥</div><div class="ftSec" id="feverSecVal">15.0s</div><div class="ftCoin" id="feverCoinVal">🪙 +0</div></div>
+        <div id="feverZoneLabel">FEVER START ZONE</div>
+        <div id="toastArea"></div>
+        <div id="goldenBanner"><div class="gbText" id="goldenBannerText">WARNING</div></div>
+        <div id="floorTransition"><div class="ftDoor">🚪</div><div class="ftText" id="floorTransitionText">FLOOR 2 へ進む…</div></div>
+      </div>
+
+      <button id="speedBtn">×1</button>
+      <div id="controls">
+        <div id="mainControlsRow">
+          <button id="shootBtn">
+            <div id="shootBtnInner">
+              <span class="boltIcon">⚡</span><span class="btnLabel" id="shootBtnLabel">FIRE</span><span class="boltIcon">⚡</span>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ===================== AUDIO ===================== */
+let actx=null, soundOn=true;
+function ensureAudio(){ if(!actx){ try{actx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){} } }
+function beep(freq,dur,type,gainMax){
+  if(!soundOn) return; ensureAudio(); if(!actx) return;
+  const o=actx.createOscillator(), g=actx.createGain();
+  o.type=type||"square"; o.frequency.value=freq;
+  g.gain.value=0; o.connect(g); g.connect(actx.destination);
+  const t=actx.currentTime;
+  g.gain.linearRampToValueAtTime(gainMax||0.07, t+0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+  o.start(t); o.stop(t+dur+0.02);
+}
+const SE = {
+  shot:()=>beep(1000,0.03,"square",0.035),
+  peg:()=>beep(1300+Math.random()*400,0.02,"triangle",0.018),
+  hit:()=>beep(700,0.08,"triangle",0.07),
+  crit:()=>{[880,1100,1400].forEach((f,i)=>setTimeout(()=>beep(f,0.12,"square",0.08),i*70));},
+  miss:()=>beep(200,0.1,"sine",0.02),
+  enemyDown:()=>{[523,659,784,1047,1319].forEach((f,i)=>setTimeout(()=>beep(f,0.2,"square",0.08),i*80));},
+  bossDown:()=>{[392,523,659,784,988,1319,1568].forEach((f,i)=>setTimeout(()=>beep(f,0.28,"square",0.09),i*90));},
+  heal:()=>{[660,880,1100].forEach((f,i)=>setTimeout(()=>beep(f,0.25,"sine",0.06),i*140));},
+  enemyAtk:()=>beep(150,0.2,"sawtooth",0.06),
+  danger:()=>beep(500,0.1,"square",0.05),
+  coin:()=>beep(1500,0.05,"triangle",0.045),
+  coinBig:()=>{[1200,1500,1800].forEach((f,i)=>setTimeout(()=>beep(f,0.1,"triangle",0.06),i*60));},
+  powerup:()=>{[440,660,880].forEach((f,i)=>setTimeout(()=>beep(f,0.15,"sine",0.06),i*90));},
+  combo:()=>beep(1046,0.08,"square",0.05),
+  gameover:()=>{[300,260,220,180].forEach((f,i)=>setTimeout(()=>beep(f,0.3,"sawtooth",0.06),i*180));},
+  boss:()=>{[220,330,440,554,660].forEach((f,i)=>setTimeout(()=>beep(f,0.2,"sawtooth",0.07),i*100));},
+  goldenAppear:()=>{[300,500,800,1200,1800].forEach((f,i)=>setTimeout(()=>beep(f,0.18,"sine",0.08),i*70));},
+  feverStart:()=>{[220,440,660,880,1100,1320,1600].forEach((f,i)=>setTimeout(()=>beep(f,0.15,"square",0.08),i*60));},
+  goldRain:()=>{[300,500,700,900,1100,1300].forEach((f,i)=>setTimeout(()=>beep(f,0.1,"sine",0.07),i*50));},
+  door:()=>beep(220,0.3,"sine",0.05),
+  click:()=>beep(1000,0.04,"square",0.04),
+};
+
+/* ===================== META SAVE (persistent "コイン", separate from run coin) ===================== */
+const META_KEY="pinballRogueMetaV5";
+const META_BACKUP_KEY=META_KEY+"_backup";
+function defaultMeta(){
+  return { coin:0, lvlHp:0, lvlAtk:0, lvlHesso:0, lvlCrit:0, lvlBallSpeed:0, lvlGoldenLuck:0,
+    stats:{ runsPlayed:0, bestFloor:0, totalCoinsEarned:0, bestFeverCoin:0, bestCombo:0, bestFeverCombo:0, goldenStartTotal:0, bestDamage:0 } };
+}
+let meta = loadMeta();
+function loadMeta(){
+  try{
+    const raw=localStorage.getItem(META_KEY); if(!raw) throw new Error("no meta");
+    const p=JSON.parse(raw);
+    return Object.assign(defaultMeta(),p,{stats:Object.assign(defaultMeta().stats,p.stats||{})});
+  }catch(e){
+    try{
+      const raw2=localStorage.getItem(META_BACKUP_KEY); if(!raw2) return defaultMeta();
+      const p2=JSON.parse(raw2);
+      return Object.assign(defaultMeta(),p2,{stats:Object.assign(defaultMeta().stats,p2.stats||{})});
+    }catch(e2){ return defaultMeta(); }
+  }
+}
+function saveMeta(){
+  try{ const s=JSON.stringify(meta); localStorage.setItem(META_KEY,s); localStorage.setItem(META_BACKUP_KEY,s); }catch(e){}
+}
+
+/* ===================== RUN-STATE PERSISTENCE (survives task-kill / reload / background) =====================
+   Saved separately from the permanent meta balance. Main + backup key, versioned, with corruption fallback.
+   Fever specifics are intentionally NOT persisted (too much transient physics state to restore safely) —
+   if the app is killed mid-FEVER, the run resumes just after that FEVER with the coins already banked. */
+const RUN_KEY="pinballRogueRunV1";
+const RUN_BACKUP_KEY=RUN_KEY+"_backup";
+const RUN_SAVE_VERSION=1;
+let runActive=false; // true only while an in-progress run exists (between NEW RUN/CONTINUE and game-over/clear/exit)
+let lastRunSaveAt=0;
+
+function saveRun(force){
+  if(!runActive || !player) return;
+  const now=Date.now();
+  if(!force && now-lastRunSaveAt<400) return; // cheap throttle so rapid coin events don't hammer localStorage
+  lastRunSaveAt=now;
+  try{
+    const snap={
+      v:RUN_SAVE_VERSION, savedAt:now,
+      player: JSON.parse(JSON.stringify(player)),
+      enemy: enemy? JSON.parse(JSON.stringify(enemy)) : null,
+      currentFloor,
+      coinLogTail: coinLog.slice(-40),
+    };
+    const s=JSON.stringify(snap);
+    localStorage.setItem(RUN_KEY, s);
+    localStorage.setItem(RUN_BACKUP_KEY, s);
+    const el=document.getElementById("saveStatus");
+    if(el) el.textContent="💾 自動保存済み";
+  }catch(e){ /* storage full / disabled — game keeps working, just without persistence */ }
+}
+function loadRunSnapshot(){
+  const tryParse=(key)=>{
+    try{
+      const raw=localStorage.getItem(key); if(!raw) return null;
+      const snap=JSON.parse(raw);
+      if(!snap || snap.v!==RUN_SAVE_VERSION || !snap.player) return null;
+      return snap;
+    }catch(e){ return null; }
+  };
+  return tryParse(RUN_KEY) || tryParse(RUN_BACKUP_KEY);
+}
+function hasRunSave(){ return !!loadRunSnapshot(); }
+function clearRunSave(){
+  runActive=false;
+  try{ localStorage.removeItem(RUN_KEY); localStorage.removeItem(RUN_BACKUP_KEY); }catch(e){}
+}
+function resumeRun(){
+  const snap=loadRunSnapshot();
+  if(!snap) return false;
+  player=snap.player;
+  enemy=snap.enemy;
+  currentFloor=snap.currentFloor||1;
+  coinLog=snap.coinLogTail||[];
+  golden=null;
+  fever={active:false,timeLeft:0,duration:0,combo:0,maxCombo:0,totalHits:0,coinGained:0,speedBoosted:false};
+  feverStarts=[]; feverGold=null;
+  goldenSpawnTimer=6000+Math.random()*4000;
+  bossGimmick=null;
+  runActive=true;
+  meta.coin=player.coin; saveMeta();
+  titleScreen.classList.add("hidden");
+  gameScreenWrap.classList.remove("hidden");
+  requestAnimationFrame(()=>{
+    resizeCanvas();
+    if(!rafId) loop();
+    updateHessoGeom(true);
+    updateDungeonHeader(currentFloor);
+    if(enemy){
+      enemyVisual.textContent=enemy.emoji;
+      enemyVisual.classList.toggle("boss", enemy.type==="boss");
+      eName.textContent=(enemy.type==="boss"?"👑 ":enemy.type==="elite"?"⚡ ":"")+enemy.name;
+      eLv.textContent="LV."+enemy.lv;
+      updateEnemyBar();
+      if(enemy.type==="boss") startBossGimmick();
+    }
+    updatePlayerBar();
+    running=true; paused=false;
+    toast("前回のRUNを再開しました");
+  });
+  return true;
+}
+// Force-save whenever the page might be about to die — this is the core of the "survives task-kill" requirement.
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden") saveRun(true); });
+window.addEventListener("pagehide", ()=>saveRun(true));
+window.addEventListener("beforeunload", ()=>saveRun(true));
+setInterval(()=>{ if(runActive) saveRun(); }, 2500);
+
+const META_DEFS=[
+  {key:"lvlHp",label:"最大HP +8%/lv",icon:"❤️"},
+  {key:"lvlAtk",label:"初期攻撃力 +8%/lv",icon:"⚔️"},
+  {key:"lvlHesso",label:"初期STARTサイズ +6%/lv",icon:"◎"},
+  {key:"lvlCrit",label:"初期クリティカル率 +1%/lv",icon:"🎯"},
+  {key:"lvlBallSpeed",label:"初期玉速度 +6%/lv",icon:"⚡"},
+  {key:"lvlGoldenLuck",label:"GOLDEN START出現率 +8%/lv",icon:"✨"},
+];
+function metaCost(lvl){ return Math.round(40*Math.pow(1.55,lvl)); }
+
+/* ===================== DOM refs ===================== */
+const $=id=>document.getElementById(id);
+const titleScreen=$("titleScreen"), gameScreenWrap=$("gameScreenWrap");
+const metaCoinVal=$("metaCoinVal"), metaList=$("metaList"), startRunBtn=$("startRunBtn"), continueBtn=$("continueBtn"), saveStatusEl=$("saveStatus"), runHistoryBox=$("runHistoryBox");
+const dungeonFloorNum=$("dungeonFloorNum"), dungeonThemeName=$("dungeonThemeName"), bossWarn=$("bossWarn"), dungeonBg=$("dungeonBg");
+const coinVal=$("coinVal");
+const hpBar=$("hpBar"), hpVal=$("hpVal"), atkVal=$("atkVal"), multVal=$("multVal"), critVal=$("critVal"), holeVal=$("holeVal");
+const feverStripe=$("feverStripe"), menuBtn=$("menuBtn"), buildBtn=$("buildBtn"), feverCoinVal=$("feverCoinVal");
+const eName=$("eName"), eLv=$("eLv"), enemyHpBar=$("enemyHpBar"), enemyHpText=$("enemyHpText"), nextAttackVal=$("nextAttackVal"), enemyBar=$("enemyBar");
+const enemyVisual=$("enemyVisual"), dmgPopupLayer=$("dmgPopupLayer");
+const bigMsg=$("bigMsg"), comboLabel=$("comboLabel"), warnFlash=$("warnFlash");
+const feverTimerBig=$("feverTimerBig"), feverSecVal=$("feverSecVal"), feverZoneLabel=$("feverZoneLabel");
+const boardWrap=$("boardWrap"), pegCanvas=$("pegCanvas"), toastArea=$("toastArea");
+const goldenBanner=$("goldenBanner"), goldenBannerText=$("goldenBannerText");
+const floorTransition=$("floorTransition"), floorTransitionText=$("floorTransitionText");
+const shootBtn=$("shootBtn"), speedBtn=$("speedBtn");
+
+/* ===================== ENEMY / POWERUP DATA ===================== */
+const ENEMIES=[
+ {key:"slime",name:"スライム",emoji:"🟢",baseHp:100,atkInterval:5000,coinReward:10},
+ {key:"goblin",name:"ゴブリン",emoji:"👺",baseHp:180,atkInterval:4500,coinReward:15},
+ {key:"orc",name:"オーク",emoji:"👹",baseHp:300,atkInterval:3800,atkBoost:1.3,coinReward:25},
+ {key:"wolf",name:"ダークウルフ",emoji:"🐺",baseHp:250,atkInterval:3200,coinReward:20},
+ {key:"vampire",name:"ヴァンパイア",emoji:"🧛",baseHp:400,atkInterval:4000,lifesteal:0.25,coinReward:35},
+ {key:"golem",name:"ゴーレム",emoji:"🗿",baseHp:450,atkInterval:2600,atkBoost:0.6,dmgBlock:25,coinReward:40},
+ {key:"assassin",name:"アサシン",emoji:"🥷",baseHp:320,atkInterval:3500,critAgainstPlayer:0.3,coinReward:35},
+ {key:"knight",name:"ダークナイト",emoji:"💀",baseHp:520,atkInterval:3600,dmgReduction:0.12,coinReward:50},
+ {key:"wraith",name:"レイス",emoji:"👻",baseHp:380,atkInterval:3000,lifesteal:0.2,coinReward:45},
+ {key:"wyvern",name:"ワイバーン",emoji:"🐲",baseHp:650,atkInterval:2500,atkBoost:1.2,coinReward:100},
+];
+const BOSSES=[
+ {key:"irongolem",name:"IRON GOLEM",emoji:"🗿",baseHp:900,atkInterval:2200,dmgBlock:40,isBoss:true,coinReward:500},
+ {key:"voiddragon",name:"ANCIENT DRAGON",emoji:"🐉",baseHp:1700,atkInterval:2000,atkBoost:1.5,isBoss:true,coinReward:800},
+ {key:"chaosemperor",name:"CHAOS EMPEROR",emoji:"👑",baseHp:2600,atkInterval:1900,atkBoost:1.6,isBoss:true,coinReward:1200},
+];
+const BOSS_BONUS_COIN=300;
+
+const POWERUPS=[
+  {id:"atk10",cat:"COMBAT",rarity:"common",name:"BRUTAL FORCE",desc:"攻撃力が10%上昇する",apply:p=>p.atk*=1.10},
+  {id:"atk20",cat:"COMBAT",rarity:"rare",name:"WAR STRIKE",desc:"攻撃力が20%上昇する",apply:p=>p.atk*=1.20},
+  {id:"atk50",cat:"COMBAT",rarity:"legendary",name:"OVERPOWER",desc:"攻撃力が50%上昇する",apply:p=>p.atk*=1.50},
+  {id:"dmg12",cat:"COMBAT",rarity:"common",name:"SHARP EDGE",desc:"総合ダメージ倍率が1.2倍",apply:p=>p.dmgMult*=1.2},
+  {id:"dmg15",cat:"COMBAT",rarity:"rare",name:"HEAVY BLOW",desc:"総合ダメージ倍率が1.5倍",apply:p=>p.dmgMult*=1.5},
+  {id:"crit5",cat:"CRITICAL",rarity:"common",name:"CRITICAL EYE",desc:"クリティカル発生率が5%上昇",apply:p=>p.critChance+=0.05},
+  {id:"critd5",cat:"CRITICAL",rarity:"rare",name:"DEADLY POINT",desc:"クリティカルダメージ倍率が+0.5",apply:p=>p.critDmgMult+=0.5},
+  {id:"fixdmg",cat:"COMBAT",rarity:"common",name:"PIERCE ROUND",desc:"命中ごとに固定15ダメージを追加",apply:p=>p.fixedDmg+=15},
+  {id:"hesso10",cat:"START",rarity:"common",name:"WIDE HOLE",desc:"STARTのサイズが10%拡大する",apply:p=>p.hessoMult*=1.10},
+  {id:"hesso20",cat:"START",rarity:"rare",name:"GIANT START",desc:"STARTのサイズが20%拡大する",apply:p=>p.hessoMult*=1.20},
+  {id:"hesso30",cat:"START",rarity:"epic",name:"GAPING MAW",desc:"STARTのサイズが30%拡大する",apply:p=>p.hessoMult*=1.30},
+  {id:"magnet",cat:"START",rarity:"rare",name:"GRAVITY WELL",desc:"START付近で玉が少し引き寄せられる",apply:p=>p.magnet+=0.35},
+  {id:"ballsize",cat:"BALL",rarity:"common",name:"BIG BALL",desc:"玉が巨大化し、釘に当たりやすくなる",apply:p=>p.ballSizeMult*=1.25},
+  {id:"ballspeed",cat:"BALL",rarity:"common",name:"FAST BALL",desc:"玉の発射初速が上がる",apply:p=>p.ballSpeedMult*=1.15},
+  {id:"firerate",cat:"BALL",rarity:"rare",name:"RAPID FIRE",desc:"連射レート(発射速度)が上がる",apply:p=>p.fireRate*=1.25},
+  {id:"doubleball",cat:"BALL",rarity:"rare",name:"DOUBLE BALL",desc:"1回の発射で玉がもう1個追加される",apply:p=>p.simultaneousBalls=Math.min(5,p.simultaneousBalls+1)},
+  {id:"tripleball",cat:"BALL",rarity:"epic",name:"TRIPLE BALL",desc:"1回の発射で玉が2個追加される",apply:p=>p.simultaneousBalls=Math.min(5,p.simultaneousBalls+2)},
+  {id:"heavyball",cat:"BALL",rarity:"common",name:"HEAVY BALL",desc:"玉が重くなり、釘での跳ね返りが安定する",apply:p=>p.ballHeavy=true},
+  {id:"bounceball",cat:"BALL",rarity:"rare",name:"BOUNCE BALL",desc:"玉が特殊な弾み方をするようになる",apply:p=>p.bounceBoost=true},
+  {id:"luckyball",cat:"CRITICAL",rarity:"rare",name:"LUCKY BALL",desc:"START入賞時のクリティカル率が上がる",apply:p=>p.critChance+=0.08},
+  {id:"comboM",cat:"COMBAT",rarity:"common",name:"CHAIN STRIKE",desc:"通常コンボによる倍率ボーナスが強化される",apply:p=>p.comboBonusMult+=0.15},
+  {id:"comboK",cat:"COMBAT",rarity:"rare",name:"STEADY HAND",desc:"MISSしても一度だけ通常コンボが継続する",apply:p=>p.comboShield+=1},
+  {id:"combo5",cat:"COMBAT",rarity:"epic",name:"RHYTHM BREAK",desc:"5連続入賞ごとに追加ダメージが発生する",apply:p=>p.combo5Extra=true},
+  {id:"hp20",cat:"DEFENSE",rarity:"common",name:"VITALITY",desc:"最大HPが20%上昇し、現在HPも回復する",apply:p=>{p.maxHp=Math.round(p.maxHp*1.2);p.hp=Math.min(p.maxHp,p.hp+Math.round(p.maxHp*0.2));}},
+  {id:"maxhp30",cat:"DEFENSE",rarity:"rare",name:"IRON SKIN",desc:"最大HPが30%上昇する",apply:p=>p.maxHp=Math.round(p.maxHp*1.3)},
+  {id:"dmgreduce",cat:"DEFENSE",rarity:"rare",name:"WARD",desc:"敵からの被ダメージが10%軽減される",apply:p=>p.damageReduction=Math.min(0.6,p.damageReduction+0.1)},
+  {id:"reviveonce",cat:"DEFENSE",rarity:"legendary",name:"LAST STAND",desc:"HP0になっても一度だけHP1で耐える",apply:p=>p.reviveCharge+=1},
+  {id:"nullify",cat:"DEFENSE",rarity:"epic",name:"GUARDIAN PULSE",desc:"敵の次の攻撃を1回無効化する",apply:p=>p.nullifyCharge+=1},
+  {id:"goldnail",cat:"COIN",rarity:"common",name:"GOLD NAIL",desc:"釘に当たると低確率でコインを獲得する",apply:p=>p.nail.gold+=1},
+  {id:"coinbonus20",cat:"COIN",rarity:"common",name:"COIN BONUS +20%",desc:"すべてのコイン獲得量が20%増加する",apply:p=>p.coinMultiplier*=1.2},
+  {id:"coinbonus50",cat:"COIN",rarity:"rare",name:"COIN BONUS +50%",desc:"すべてのコイン獲得量が50%増加する",apply:p=>p.coinMultiplier*=1.5},
+  {id:"coinbonus100",cat:"COIN",rarity:"epic",name:"COIN BONUS +100%",desc:"すべてのコイン獲得量が2倍になる",apply:p=>p.coinMultiplier*=2.0},
+  {id:"fevermaster",cat:"FEVER",rarity:"rare",name:"FEVER MASTER",desc:"FEVER TIMEの時間が+3秒される",apply:p=>p.feverExtraSec+=3},
+  {id:"goldenluck",cat:"FEVER",rarity:"epic",name:"GOLDEN LUCK",desc:"GOLDEN START(FEVER突入口)の出現率が上がる",apply:p=>p.goldenLuck+=0.6},
+  {id:"goldensize",cat:"FEVER",rarity:"common",name:"GOLDEN SIZE",desc:"GOLDEN STARTのサイズが大きくなる",apply:p=>p.goldenSizeBonus+=0.25},
+  {id:"goldenmagnet",cat:"FEVER",rarity:"rare",name:"GOLDEN MAGNET",desc:"GOLDEN STARTへの玉の吸引力が上がる",apply:p=>p.goldenMagnet+=0.5},
+  {id:"feverbonus",cat:"FEVER",rarity:"epic",name:"FEVER BONUS",desc:"FEVER中の獲得コインが+20%される",apply:p=>p.feverCoinBonus+=0.2},
+  {id:"combomaster",cat:"FEVER",rarity:"rare",name:"COMBO MASTER",desc:"FEVER COMBOによる倍率ボーナスが強化される",apply:p=>p.feverComboMultBonus+=0.2},
+  {id:"movingtarget",cat:"FEVER",rarity:"rare",name:"MOVING TARGET",desc:"FEVER ZONE内STARTの移動速度が低下する",apply:p=>p.goldenSlow=Math.min(0.7,p.goldenSlow+0.2)},
+  {id:"goldrain",cat:"FEVER",rarity:"mythic",name:"GOLD RAIN",desc:"FEVER中、一定確率で大量コインが降り注ぐ",apply:p=>p.goldRainChance=Math.min(0.6,p.goldRainChance+0.15)},
+  {id:"lastsecond",cat:"FEVER",rarity:"legendary",name:"LAST SECOND",desc:"FEVER終了直前の入賞報酬が大きくUPする",apply:p=>p.lastSecondBonus+=0.8},
+];
+
+/* ===== BUILD SYNERGY SYSTEM: tags, set bonuses, cross-tag synergies, cursed powerups ===== */
+const TAGS=["ATTACK","COIN","FEVER","BALL","DEFENSE"];
+const TAG_ICON={ATTACK:"⚔️",COIN:"🪙",FEVER:"🔥",BALL:"🎱",DEFENSE:"🛡️"};
+const CAT_TO_TAG={COMBAT:"ATTACK",CRITICAL:"ATTACK",START:"ATTACK",BALL:"BALL",DEFENSE:"DEFENSE",COIN:"COIN",FEVER:"FEVER"};
+POWERUPS.forEach(pu=>{ pu.tag = CAT_TO_TAG[pu.cat] || pu.cat; });
+
+const CURSED_POWERUPS=[
+  {id:"cursedgold",cat:"COIN",tag:"COIN",rarity:"epic",isCursed:true,name:"CURSED GOLD",
+    desc:"コイン獲得量が+100%される",curse:"ただし敵の攻撃力が+50%される",
+    apply:p=>{p.coinMultiplier*=2.0; p.cursedEnemyAtk=(p.cursedEnemyAtk||1)*1.5;}},
+  {id:"bloodcannon",cat:"COMBAT",tag:"ATTACK",rarity:"epic",isCursed:true,name:"BLOOD CANNON",
+    desc:"攻撃力が+100%される",curse:"ただし最大HPが-30%される",
+    apply:p=>{p.atk*=2.0; p.maxHp=Math.max(50,Math.round(p.maxHp*0.7)); p.hp=Math.min(p.hp,p.maxHp);}},
+  {id:"greed",cat:"COIN",tag:"COIN",rarity:"legendary",isCursed:true,name:"GREED",
+    desc:"コイン獲得量が大幅に上昇する",curse:"ただし一定時間ごとにHPを失う",
+    apply:p=>{p.coinMultiplier*=1.8; p.greedCurse=true;}},
+];
+POWERUPS.push(...CURSED_POWERUPS);
+
+const SET_BONUS_DEFS={
+  ATTACK:[
+    {count:3,name:"ATTACK SET Lv.1",desc:"攻撃力+15%",apply:p=>p.dmgMult*=1.15},
+    {count:5,name:"ATTACK SET Lv.2",desc:"クリティカル率+10%",apply:p=>p.critChance+=0.10},
+    {count:8,name:"BERSERKER",desc:"敵HPが高いほど与ダメージが増加する",apply:p=>p.berserker=true},
+  ],
+  COIN:[
+    {count:3,name:"COIN SET Lv.1",desc:"コイン獲得量+15%",apply:p=>p.coinMultiplier*=1.15},
+    {count:5,name:"COIN SET Lv.2",desc:"GOLD NAIL発動率が上昇",apply:p=>p.nail.gold+=2},
+    {count:8,name:"COIN KING",desc:"コイン獲得量が恒久的に+50%される",apply:p=>p.coinMultiplier*=1.5},
+  ],
+  FEVER:[
+    {count:3,name:"FEVER SET Lv.1",desc:"FEVER時間+2秒",apply:p=>p.feverExtraSec+=2},
+    {count:5,name:"FEVER SET Lv.2",desc:"GOLDEN START出現率が上昇",apply:p=>p.goldenLuck+=0.4},
+    {count:8,name:"SUPER CHARGED",desc:"FEVER時間・報酬が大幅強化される",apply:p=>{p.feverExtraSec+=8;p.feverCoinBonus+=0.5;}},
+  ],
+  BALL:[
+    {count:3,name:"BALL SET Lv.1",desc:"玉速度+10%",apply:p=>p.ballSpeedMult*=1.1},
+    {count:5,name:"BALL SET Lv.2",desc:"玉サイズ+15%",apply:p=>p.ballSizeMult*=1.15},
+    {count:8,name:"BALLISTIC",desc:"同時発射数と玉サイズが大幅強化される",apply:p=>{p.simultaneousBalls=Math.min(5,p.simultaneousBalls+2);p.ballSizeMult*=1.3;}},
+  ],
+  DEFENSE:[
+    {count:3,name:"DEFENSE SET Lv.1",desc:"被ダメージ-8%",apply:p=>p.damageReduction=Math.min(0.6,p.damageReduction+0.08)},
+    {count:5,name:"DEFENSE SET Lv.2",desc:"最大HP+15%",apply:p=>{p.maxHp=Math.round(p.maxHp*1.15);p.hp=Math.min(p.maxHp,p.hp+Math.round(p.maxHp*0.15));}},
+    {count:8,name:"IMMORTAL",desc:"死亡回避を追加、被ダメージがさらに軽減される",apply:p=>{p.reviveCharge+=2;p.damageReduction=Math.min(0.7,p.damageReduction+0.1);}},
+  ],
+};
+
+const CROSS_SYNERGY_DEFS=[
+  {id:"goldenBerserker",tags:{ATTACK:3,COIN:3},name:"GOLDEN BERSERKER",
+    desc:"敵撃破時、獲得コインの一部が一時的に攻撃力へ変換される",apply:p=>p.goldenBerserker=true},
+  {id:"feverBank",tags:{COIN:3,FEVER:3},name:"FEVER BANK",
+    desc:"FEVER中に獲得したコインの一部がFEVER終了後のボーナスになる",apply:p=>p.feverBank=true},
+  {id:"feverStorm",tags:{FEVER:3,BALL:3},name:"FEVER STORM",
+    desc:"FEVER中、一定コンボごとに追加の玉が出現する",apply:p=>p.feverStorm=true},
+  {id:"ballCannon",tags:{BALL:4,ATTACK:4},name:"BALL CANNON",
+    desc:"同じ敵に連続で命中させると追加ダメージが発生する",apply:p=>p.ballCannon=true},
+  {id:"revenge",tags:{DEFENSE:3,ATTACK:3},name:"REVENGE",
+    desc:"ダメージを受けるほど次の攻撃が強くなる",apply:p=>p.revenge=true},
+];
+
+const GOLDEN_WARRIOR_LEVELS=[
+  {lv:1,coinReq:10000,tagReq:3,divisor:1000},
+  {lv:2,coinReq:50000,tagReq:5,divisor:500},
+];
+
+const EVENTS=[
+  {id:"golden",name:"✨ GOLDEN MACHINE",desc:"次の戦闘の敵撃破コインが2倍になる",apply:p=>p.nextRewardMult=(p.nextRewardMult||1)*2},
+  {id:"myshole",name:"🕳️ MYSTERIOUS HOLE",desc:"次の戦闘のみSTARTが一時的に超巨大化する",apply:p=>p.tempHessoBoost=2.2},
+  {id:"cursed",name:"☠️ CURSED MACHINE",desc:"攻撃力が2倍になるが、STARTが半分の大きさになる（次の戦闘のみ）",apply:p=>{p.tempAtkBoost=2.0;p.tempHessoBoost=0.5;}},
+  {id:"jackpot",name:"💰 JACKPOT",desc:"大量のコインを獲得した！",apply:p=>{addCoins(300+Math.floor(Math.random()*400), "Event Jackpot");}},
+];
+
+/* ===================== DUNGEON THEME ===================== */
+function dungeonThemeForFloor(f){
+  if(f%5===0) return {name:"BOSS ROOM", cls:"boss", isBoss:true};
+  const block=Math.floor((f-1)/5)%3;
+  if(block===0) return {name:"古代遺跡", cls:"ruins"};
+  if(block===1) return {name:"地下洞窟", cls:"cavern"};
+  return {name:"魔王城", cls:"castle"};
+}
+function updateDungeonHeader(f){
+  const theme=dungeonThemeForFloor(f);
+  dungeonFloorNum.textContent="FLOOR "+f;
+  dungeonThemeName.textContent=theme.name;
+  dungeonBg.className=theme.cls;
+  const nextIsBoss = (f+1)%5===0;
+  bossWarn.classList.toggle("show", nextIsBoss);
+  enemyBar.classList.toggle("bossbar", theme.isBoss===true);
+}
+
+/* ===================== MASTER COIN SYSTEM (single source of truth) ===================== */
+// All coin changes in the entire game MUST go through addCoins()/spendCoins().
+// player.coin is the one and only master value during play, and it is mirrored into
+// meta.coin (the persistent balance shown on the strengthen screen) on every change,
+// so the coin count during play and on the strengthen screen are always identical.
+let coinLog=[];
+function addCoins(amount, reason){
+  if(!player || amount===0) return;
+  const rounded = Math.round(amount*10)/10;
+  player.coin = Math.round((player.coin+rounded)*10)/10;
+  if(rounded>0) player.runStats.grossGained += rounded;
+  else player.runStats.grossSpent += -rounded;
+  coinLog.push({reason, amount:rounded, balance:player.coin});
+  if(coinLog.length>200) coinLog.shift();
+  meta.coin = player.coin;
+  saveMeta();
+  updatePlayerBar();
+  checkCoinSynergies();
+  saveRun();
+}
+function spendCoins(amount, reason){ addCoins(-Math.abs(amount), reason); }
+
+/* ===================== BUILD SYNERGY LOGIC ===================== */
+function grantPowerup(pu){
+  pu.apply(player);
+  player.runStats.powerups.push(pu.name);
+  const tag=pu.tag;
+  if(tag && player.buildTags[tag]!==undefined) player.buildTags[tag]++;
+  checkSetBonuses();
+  checkCrossSynergies();
+  checkCoinSynergies();
+  updatePlayerBar();
+  saveRun(true);
+}
+function checkSetBonuses(){
+  if(!player) return;
+  TAGS.forEach(tag=>{
+    const count=player.buildTags[tag]||0;
+    (SET_BONUS_DEFS[tag]||[]).forEach(def=>{
+      const uid=tag+":"+def.count;
+      if(count>=def.count && !player.unlockedSetBonuses.includes(uid)){
+        player.unlockedSetBonuses.push(uid);
+        def.apply(player);
+        toast(`🧩 ${TAG_ICON[tag]} ${def.name} 発動！`);
+        showBigMsg(def.name,"var(--neon-purple)");
+        SE.powerup();
+      }
+    });
+  });
+}
+function checkCrossSynergies(){
+  if(!player) return;
+  CROSS_SYNERGY_DEFS.forEach(def=>{
+    if(player.unlockedCrossSynergies.includes(def.id)) return;
+    const ok=Object.keys(def.tags).every(t=>(player.buildTags[t]||0)>=def.tags[t]);
+    if(ok){
+      player.unlockedCrossSynergies.push(def.id);
+      def.apply(player);
+      toast(`✨ SYNERGY: ${def.name} 発動！`);
+      showBigMsg(def.name,"var(--neon-gold)");
+      SE.powerup();
+    }
+  });
+}
+function checkCoinSynergies(){
+  if(!player) return;
+  for(let i=GOLDEN_WARRIOR_LEVELS.length-1;i>=0;i--){
+    const lvDef=GOLDEN_WARRIOR_LEVELS[i];
+    if(player.goldenWarriorLv<lvDef.lv && player.runStats.grossGained>=lvDef.coinReq && (player.buildTags.ATTACK||0)>=lvDef.tagReq){
+      player.goldenWarriorLv=lvDef.lv;
+      toast(`🪙 GOLDEN WARRIOR Lv.${lvDef.lv} 発動！`);
+      showBigMsg("GOLDEN WARRIOR Lv."+lvDef.lv,"var(--neon-gold)");
+      SE.powerup();
+      break;
+    }
+  }
+}
+function nextSetBonusHint(tag){
+  const count=player.buildTags[tag]||0;
+  const defs=SET_BONUS_DEFS[tag]||[];
+  const next=defs.find(d=>count<d.count);
+  return next? `あと${next.count-count}個で「${next.name}」` : "MAX";
+}
+
+/* ===================== PLAYER / RUN STATE ===================== */
+let player=null, enemy=null, currentFloor=1, running=false, paused=false;
+
+function newPlayer(){
+  const hpMult=1+meta.lvlHp*0.08, atkMult=1+meta.lvlAtk*0.08, hessoMult0=1+meta.lvlHesso*0.06;
+  const critAdd=meta.lvlCrit*0.01, ballSpeedMult0=1+meta.lvlBallSpeed*0.06, goldenLuck0=1+meta.lvlGoldenLuck*0.08;
+  return {
+    maxHp:Math.round(200*hpMult), hp:Math.round(200*hpMult),
+    atk:Math.round(45*atkMult), dmgMult:1.0,
+    critChance:0.05+critAdd, critDmgMult:2.0, fixedDmg:0,
+    coin:meta.coin, startCoin:meta.coin,
+    hessoMult:hessoMult0, magnet:0,
+    ballSizeMult:1.0, ballSpeedMult:ballSpeedMult0, fireRate:2.5, simultaneousBalls:1,
+    ballHeavy:false, bounceBoost:false,
+    comboBonusMult:0, comboShield:0, combo5Extra:false,
+    damageReduction:0, reviveCharge:0, nullifyCharge:0,
+    nail:{gold:0},
+    comboCount:0,
+    coinMultiplier:1.0,
+    goldenLuck:goldenLuck0, goldenSlow:0, goldenSizeBonus:0, goldenMagnet:0.4,
+    feverExtraSec:0, feverCoinBonus:0, feverComboMultBonus:0, goldRainChance:0, lastSecondBonus:0,
+    nextRewardMult:1, tempAtkBoost:1, tempHessoBoost:1,
+    buildTags:{ATTACK:0,COIN:0,FEVER:0,BALL:0,DEFENSE:0},
+    unlockedSetBonuses:[], unlockedCrossSynergies:[], goldenWarriorLv:0,
+    berserker:false, goldenBerserker:false, feverBank:false, feverStorm:false, ballCannon:false, revenge:false,
+    cursedEnemyAtk:1, greedCurse:false, greedTimer:0, rerollCount:0,
+    runStats:{totalDamage:0,maxCombo:0,grossGained:0,grossSpent:0,powerups:[],maxFloor:1,feverCount:0,bestFeverCoin:0,maxFeverCombo:0,goldenHitCount:0,enemiesKilled:0,bossesKilled:0}
+  };
+}
+
+function enemyForFloor(f, type){
+  let base;
+  if(type==="boss"){ base = BOSSES[Math.floor((f/5-1))%BOSSES.length]; }
+  else { const idx=(f-1)%ENEMIES.length; base=ENEMIES[idx]; }
+  const scale=1+(f-1)*0.13;
+  let hp=Math.round(base.baseHp*scale);
+  let atk=Math.round((9+f*2.4)*(base.atkBoost||1));
+  let interval=base.atkInterval;
+  let coinReward=Math.round(base.coinReward*(1+(f-1)*0.15));
+  if(type==="elite"){ hp=Math.round(hp*2.1); atk=Math.round(atk*1.4); interval=Math.round(interval*0.85); coinReward=Math.round(coinReward*2.2); }
+  if(type==="boss"){ hp=Math.round(hp*(1+Math.floor((f/5)-1)*0.5)); atk=Math.round(atk*1.6); }
+  if(player) atk=Math.round(atk*(player.cursedEnemyAtk||1));
+  const lv=Math.max(1, Math.floor(f*1.2));
+  return Object.assign({}, base, {maxHp:hp, hp:hp, atk, type, floor:f, lv, atkInterval:interval, atkTimer:interval, coinReward, _warned3:null});
+}
+
+/* ===================== CANVAS / PHYSICS ===================== */
+let ctx, W=300, H=300, DPR=1;
+let pegs=[], balls=[];
+const GRAVITY=0.22;
+let hesso={x:0,y:0,w:20};
+let golden=null;
+let DEBUG_MODE_ON=false; // toggled by opening/closing the debug panel; enables GOLDEN START hitbox overlay + hit logging
+
+function resizeCanvas(){
+  const rect=boardWrap.getBoundingClientRect();
+  W=rect.width; H=rect.height; DPR=window.devicePixelRatio||1;
+  pegCanvas.width=W*DPR; pegCanvas.height=H*DPR;
+  pegCanvas.style.width=W+"px"; pegCanvas.style.height=H+"px";
+  ctx=pegCanvas.getContext("2d");
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  generatePegs();
+  updateHessoGeom(true);
+}
+window.addEventListener("resize", ()=>{ if(!gameScreenWrap.classList.contains("hidden")) resizeCanvas(); });
+
+function generatePegs(){
+  pegs=[];
+  const rows=10, cols=8;
+  const marginTop=10, marginBottom= (fever && fever.active)? 92:52;
+  const usableH=H-marginTop-marginBottom;
+  for(let r=0;r<rows;r++){
+    const y=marginTop+(usableH/(rows-1))*r;
+    const offset=(r%2===0)?0:(W/cols)/2;
+    for(let c=0;c<=cols;c++){
+      let x=offset+(W/cols)*c+(Math.random()*6-3);
+      if(x<12||x>W-12) continue;
+      if(r>=rows-2 && Math.abs(x-W/2)<16) continue;
+      pegs.push({x,y});
+    }
+  }
+}
+function updateHessoGeom(resetPos){
+  if(!player) return;
+  const base=20;
+  const boost=player.hessoMult*(player.tempHessoBoost||1);
+  hesso.w=base*boost;
+  hesso.y=H-24;
+  if(resetPos || !hesso.x){
+    hesso.x=W/2;
+    const speed=(32+Math.random()*18)*(1-Math.min(0.6,(player.goldenSlow||0)*0.5));
+    hesso.vx=(Math.random()<0.5?-1:1)*speed;
+  }
+}
+function updateHessoMovement(dt){
+  if(!hesso.vx) return;
+  hesso.x += hesso.vx*(dt/1000);
+  const margin=hesso.w/2+8;
+  if(hesso.x<margin){ hesso.x=margin; hesso.vx=Math.abs(hesso.vx); }
+  if(hesso.x>W-margin){ hesso.x=W-margin; hesso.vx=-Math.abs(hesso.vx); }
+}
+
+/* Every START (normal / golden / fever-zone) is a ring-free "cup" and shares this capture test.
+   This directional test assumes the target sits at a roughly fixed height and balls fall
+   THROUGH that row — correct for hesso/feverStarts (they only ever move horizontally). */
+function withinCup(bx,by,br,s){
+  if(by < s.y-9 || by > s.y+11) return false;
+  const halfW = (s.w/2)*0.55;
+  return Math.abs(bx-s.x) < halfW+br;
+}
+/* GOLDEN START (and the boss weak-point that reuses it) roams freely in BOTH x and y, so it
+   needs an omnidirectional circular hit-test instead — a directional "falls in from above"
+   check would almost never line up against a target that can approach the ball from any side.
+   Hitbox is ~1.15x the visual size (per design: generous, but not so big it feels unfair). */
+function withinGoldenHitbox(bx,by,br,s){
+  const R=(s.w/2)*1.15 + br;
+  const dx=bx-s.x, dy=by-s.y;
+  return (dx*dx+dy*dy) < R*R;
+}
+
+function spawnBall(){
+  const n=Math.max(1, player.simultaneousBalls);
+  for(let i=0;i<n;i++){
+    if(balls.length>=60) break;
+    balls.push({
+      x: W/2+(Math.random()*36-18)+(i-n/2)*6, y:6,
+      vx:(Math.random()*1.4-0.7),
+      vy:0.4,
+      life:0, maxLife:750,
+      r: 3.4*player.ballSizeMult,
+      speedMult: player.ballSpeedMult,
+    });
+  }
+}
+
+function stepPhysics(){
+  for(let i=balls.length-1;i>=0;i--){
+    const b=balls[i];
+    b.life++;
+    b.vy+=GRAVITY*(player.ballHeavy?0.62:0.5)*b.speedMult;
+    b.vy=Math.min(b.vy, (player.ballHeavy?7.5:6)*b.speedMult);
+    b.x+=b.vx*b.speedMult; b.y+=b.vy;
+    if(b.x<b.r){ b.x=b.r; b.vx*=-0.5; }
+    if(b.x>W-b.r){ b.x=W-b.r; b.vx*=-0.5; }
+    for(let j=0;j<pegs.length;j++){
+      const p=pegs[j];
+      if(Math.abs(p.y-b.y)>10) continue;
+      const dx=b.x-p.x, dy=b.y-p.y;
+      const dist=Math.sqrt(dx*dx+dy*dy);
+      const minD=b.r+2.4;
+      if(dist<minD && dist>0.001){
+        const nx=dx/dist, ny=dy/dist;
+        b.x=p.x+nx*minD; b.y=p.y+ny*minD;
+        const speed=Math.sqrt(b.vx*b.vx+b.vy*b.vy);
+        const retain=player.bounceBoost?0.8:0.6;
+        b.vx=nx*speed*retain+(Math.random()*1.3-0.65);
+        b.vy=Math.max(0.3, ny*speed*retain*0.5+b.vy*0.35);
+        if(Math.random()<0.1) SE.peg();
+        onPegHit(b);
+      }
+    }
+
+    let captured=false;
+    if(fever.active){
+      for(let k=0;k<feverStarts.length;k++){
+        const s=feverStarts[k];
+        if(withinCup(b.x,b.y,b.r,s)){ awardFeverCoin(s); captured=true; break; }
+      }
+      if(!captured && feverGold && withinCup(b.x,b.y,b.r,feverGold)){ awardFeverCoin(feverGold); captured=true; }
+    } else {
+      if(golden && golden.isWeakPoint && !(enemy && enemy.type==="boss")){
+        golden=null; // stray leftover weak-point from a finished boss fight — clear it, never treat as a real trigger
+      }
+      if(golden && !golden.consumed && golden.isWeakPoint && enemy && enemy.type==="boss" && withinGoldenHitbox(b.x,b.y,b.r,golden)){
+        golden.consumed=true; // guard: this individual GOLDEN START object can only ever fire once
+        if(DEBUG_MODE_ON) console.log("GOLDEN START HIT (weak point)", {ballX:b.x,ballY:b.y,goldenX:golden.x,goldenY:golden.y,
+          distance:Math.hypot(b.x-golden.x,b.y-golden.y), hitboxR:(golden.w/2)*1.15+b.r, bossType:enemy.key});
+        SE.crit(); shakeEnemy();
+        const bonusDmg=Math.max(1, Math.round(player.atk*3));
+        enemy.hp=Math.max(0, enemy.hp-bonusDmg);
+        player.runStats.totalDamage+=bonusDmg;
+        popDamage("WEAK POINT!\n-"+bonusDmg.toLocaleString(),"crit");
+        updateEnemyBar(); updatePlayerBar();
+        golden=null;
+        captured=true;
+        if(enemy.hp<=0) onEnemyDown();
+      }
+      else if(golden && !golden.consumed && !golden.isWeakPoint && withinGoldenHitbox(b.x,b.y,b.r,golden)){
+        golden.consumed=true; // guard: this individual GOLDEN START object can only ever fire once
+        if(DEBUG_MODE_ON) console.log("GOLDEN START HIT", {ballX:b.x,ballY:b.y,goldenX:golden.x,goldenY:golden.y,
+          distance:Math.hypot(b.x-golden.x,b.y-golden.y), hitboxR:(golden.w/2)*1.15+b.r, feverActive:fever.active});
+        triggerFever(); captured=true;
+      }
+      else if(withinCup(b.x,b.y,b.r,hesso)){ onHesso(); captured=true; }
+    }
+    if(captured){ balls.splice(i,1); continue; }
+
+    if(!fever.active && player.magnet>0 && b.y>H-90){
+      const dx=hesso.x-b.x;
+      b.vx += Math.sign(dx)*Math.min(Math.abs(dx)*0.002*player.magnet, 0.15);
+    }
+    if(!fever.active && golden && player.goldenMagnet>0){
+      const dx=golden.x-b.x, dy=golden.y-b.y, d=Math.sqrt(dx*dx+dy*dy);
+      if(d<90){ b.vx += Math.sign(dx)*Math.min(0.18, player.goldenMagnet*0.08); }
+    }
+
+    if(b.y>H+10 || b.life>b.maxLife){
+      balls.splice(i,1);
+      if(!fever.active) onMiss();
+    }
+  }
+}
+
+function onPegHit(b){
+  const n=player.nail;
+  if(n.gold>0 && Math.random()<0.02*n.gold){
+    const g=Math.round((3+Math.random()*8)*player.coinMultiplier);
+    addCoins(g, "Gold Nail");
+    SE.coin();
+    popDamage("+"+g, "coin");
+  }
+}
+
+/* ===================== GOLDEN START (fever trigger, same cup shape as normal START) ===================== */
+let goldenSpawnTimer=6000+Math.random()*4000;
+function updateGoldenSystem(dt){
+  if(!golden){
+    goldenSpawnTimer -= dt;
+    if(goldenSpawnTimer<=0){
+      const chance=0.09*player.goldenLuck;
+      goldenSpawnTimer=4500+Math.random()*3500;
+      if(Math.random()<chance) spawnGolden();
+    }
+  } else {
+    golden.life -= dt;
+    golden.dirTimer -= dt;
+    if(golden.dirTimer<=0){
+      golden.dirTimer=800+Math.random()*900;
+      const ang=Math.random()*Math.PI*2;
+      const spd=(0.35+Math.random()*0.5)*(1-Math.min(0.7,player.goldenSlow));
+      golden.vx=Math.cos(ang)*spd; golden.vy=Math.sin(ang)*spd;
+    }
+    golden.x += golden.vx*(dt*0.06);
+    golden.y += golden.vy*(dt*0.06);
+    const margin=golden.w/2+6;
+    if(golden.x<margin){ golden.x=margin; golden.vx*=-1; }
+    if(golden.x>W-margin){ golden.x=W-margin; golden.vx*=-1; }
+    if(golden.y<40){ golden.y=40; golden.vy*=-1; }
+    if(golden.y>H-40){ golden.y=H-40; golden.vy*=-1; }
+    if(golden.life<=0){ golden=null; }
+  }
+}
+function spawnGolden(){
+  golden={ x:W/2, y:H/2, w:hesso.w*(1+player.goldenSizeBonus), vx:0.3, vy:0.3, life:8000+Math.random()*4000, dirTimer:0 };
+  SE.goldenAppear();
+  flashGoldenBanner("WARNING", ()=>{ flashGoldenBanner("✨ GOLDEN START APPEARED!! ✨\nFEVER CHANCE!!"); });
+  meta.stats.goldenStartTotal++; saveMeta();
+}
+function flashGoldenBanner(text, cb){
+  goldenBannerText.textContent=text;
+  goldenBanner.style.transition="opacity .2s";
+  goldenBanner.style.opacity=1;
+  setTimeout(()=>{ goldenBanner.style.opacity=0; if(cb) setTimeout(cb,250); }, 700);
+}
+
+/* ===================== FEVER TIME — bottom "FEVER START ZONE" with lane-confined moving cups ===================== */
+let fever={active:false,timeLeft:0,duration:0,combo:0,maxCombo:0,totalHits:0,coinGained:0,speedBoosted:false};
+let feverStarts=[];
+let feverGold=null;
+let goldRainTimer=0;
+
+function triggerFever(){
+  player.runStats.goldenHitCount++;
+  golden=null;
+  fever={active:true, duration:(15+player.feverExtraSec)*1000, timeLeft:0, combo:0, maxCombo:0, totalHits:0, coinGained:0, speedBoosted:false};
+  fever.timeLeft=fever.duration;
+  player.runStats.feverCount++;
+  boardWrap.classList.add("feverGlow");
+  feverStripe.classList.add("show");
+  feverTimerBig.classList.add("show");
+  feverZoneLabel.classList.add("show");
+  shootBtn.classList.add("fever");
+  enemyBar.classList.add("paused");
+  SE.feverStart();
+  showBigMsg("🔥 FEVER TIME 🔥","var(--neon-orange)");
+  generatePegs();
+  setupFeverZone();
+  goldRainTimer=1500;
+}
+function setupFeverZone(){
+  const zoneY=H-30;
+  feverZoneLabel.style.top=(zoneY-34)+"px";
+  const tiers=[
+    {value:5,  color:"#cfd6ff", speed:40},
+    {value:10, color:"#3a9bff", speed:60},
+    {value:20, color:"#39ff8f", speed:85},
+    {value:50, color:"#ff3355", speed:115},
+  ];
+  const n=tiers.length;
+  const laneW=W/n;
+  const slowFactor=1-Math.min(0.6, player.goldenSlow*0.5);
+  feverStarts = tiers.map((t,i)=>{
+    const laneMin=i*laneW+16, laneMax=(i+1)*laneW-16;
+    return { x:(laneMin+laneMax)/2, y:zoneY, w:hesso.w*0.9, value:t.value, color:t.color,
+      laneMin, laneMax, speed:t.speed*slowFactor, dir: Math.random()<0.5?1:-1 };
+  });
+  feverGold = { x:W/2, y:zoneY, w:hesso.w*1.05*(1+player.goldenSizeBonus), value:100, color:"#ffcc33",
+    laneMin:16, laneMax:W-16, speed:150*slowFactor, dir: Math.random()<0.5?1:-1, gold:true };
+}
+function updateFeverZone(dt){
+  const all = feverGold? feverStarts.concat([feverGold]) : feverStarts;
+  for(const s of all){
+    s.x += s.dir*s.speed*(dt/1000);
+    if(s.x<s.laneMin){ s.x=s.laneMin; s.dir=1; }
+    if(s.x>s.laneMax){ s.x=s.laneMax; s.dir=-1; }
+  }
+  goldRainTimer -= dt;
+  if(goldRainTimer<=0){
+    goldRainTimer=1500+Math.random()*800;
+    if(player.goldRainChance>0 && Math.random()<player.goldRainChance){
+      const g=Math.round((80+Math.random()*220)*player.coinMultiplier*(1+player.feverCoinBonus));
+      addCoins(g, "Gold Rain");
+      fever.coinGained+=g;
+      SE.goldRain();
+      showBigMsg("💰 GOLD RAIN!! 💰","var(--neon-gold)");
+      popDamage("+"+g.toLocaleString(), "coinbig");
+    }
+  }
+  feverCoinVal.textContent="🪙 +"+fever.coinGained.toLocaleString();
+}
+function feverComboMultiplier(count){
+  let m=1.0;
+  if(count>=30) m=5.0; else if(count>=20) m=3.0; else if(count>=10) m=2.0; else if(count>=5) m=1.5; else if(count>=3) m=1.2;
+  m *= (1+player.feverComboMultBonus);
+  return m;
+}
+function awardFeverCoin(start){
+  SE.hit();
+  fever.combo++; fever.totalHits++;
+  fever.maxCombo=Math.max(fever.maxCombo, fever.combo);
+  player.runStats.maxFeverCombo=Math.max(player.runStats.maxFeverCombo, fever.combo);
+  meta.stats.bestFeverCombo=Math.max(meta.stats.bestFeverCombo, fever.combo);
+  comboLabel.classList.add("fever","show");
+  comboLabel.textContent=fever.combo+" FEVER HIT";
+  SE.combo();
+
+  const mult=feverComboMultiplier(fever.combo);
+  const isLast = fever.timeLeft<=1000;
+  const coinMult = player.coinMultiplier*(1+player.feverCoinBonus)*(isLast?(1+player.lastSecondBonus):1);
+  const gained = Math.max(1, Math.round(start.value*mult*coinMult));
+  addCoins(gained, isLast? "Last Hit Bonus" : "Fever Start");
+  fever.coinGained += gained;
+  meta.stats.bestFeverCoin=Math.max(meta.stats.bestFeverCoin, fever.coinGained);
+
+  const label = isLast? "💰 MASSIVE BONUS!!\n+"+gained.toLocaleString() : "START HIT!!\n+"+gained.toLocaleString();
+  popDamage(label, mult>=2? "coinbig":"coin");
+  if(player.feverStorm && fever.combo%8===0){ spawnBall(); toast("FEVER STORM! 玉出現"); }
+}
+let _lastFeverSecShown=null;
+function updateFeverTimer(dt){
+  if(!fever.active) return;
+  fever.timeLeft -= dt;
+  updateFeverZone(dt);
+  if(!fever.speedBoosted && fever.timeLeft<=3000){
+    fever.speedBoosted=true;
+    const all = feverGold? feverStarts.concat([feverGold]) : feverStarts;
+    all.forEach(s=>s.speed*=1.5);
+    toast("START速度UP！");
+  }
+  const secLeft=Math.max(0, fever.timeLeft/1000);
+  feverSecVal.textContent=secLeft.toFixed(1)+"s";
+  const secCeil=Math.ceil(secLeft);
+  if(secCeil!==_lastFeverSecShown){
+    _lastFeverSecShown=secCeil;
+    if(secCeil===5) toast("FINAL CHANCE!!");
+    if(secCeil===1) showBigMsg("LAST HIT!!","var(--neon-red)");
+  }
+  if(secLeft<=3){ warnFlash.classList.remove("show"); void warnFlash.offsetWidth; if(Math.floor(Date.now()/300)%2===0) warnFlash.classList.add("show"); }
+  if(fever.timeLeft<=0){ endFever(); }
+}
+function endFever(){
+  fever.active=false;
+  boardWrap.classList.remove("feverGlow");
+  feverStripe.classList.remove("show");
+  feverTimerBig.classList.remove("show");
+  feverZoneLabel.classList.remove("show");
+  shootBtn.classList.remove("fever");
+  enemyBar.classList.remove("paused");
+  comboLabel.classList.remove("show","fever");
+  feverStarts=[]; feverGold=null;
+  generatePegs();
+  if(enemy){ enemy.atkTimer=enemy.atkInterval; enemy._warned3=null; }
+  if(player.feverBank && fever.coinGained>0){
+    const bonus=Math.round(fever.coinGained*0.15);
+    addCoins(bonus, "Fever Bank");
+    toast(`FEVER BANK: +${bonus.toLocaleString()}`);
+  }
+  releaseFire();          // stop any held auto-fire so it can't keep spending coins behind the modal
+  paused=true;            // freeze gameplay (shooting/enemy timer) while the result is shown
+  saveRun(true);
+  showFeverResult();
+}
+function showFeverResult(){
+  const wrap=document.createElement("div");
+  wrap.className="modalWrap";
+  wrap.innerHTML=`<div class="modalBox feverResult">
+    <h2>🔥 FEVER RESULT</h2>
+    <div class="statLine"><span>FEVER TIME</span><b>${(fever.duration/1000).toFixed(1)}s</b></div>
+    <div class="statLine"><span>TOTAL HIT</span><b>${fever.totalHits}</b></div>
+    <div class="statLine"><span>MAX COMBO</span><b>${fever.maxCombo}</b></div>
+    <div class="statLine highlight"><span>COIN GET (このFEVER)</span><b>+${fever.coinGained.toLocaleString()}</b></div>
+    <div class="statLine"><span>現在の所持コイン</span><b>${Math.floor(player.coin).toLocaleString()}</b></div>
+    <button class="modalBtn" id="feverResultOk">戦闘へ戻る</button>
+  </div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector("#feverResultOk").addEventListener("click",()=>{ wrap.remove(); paused=false; });
+}
+
+/* ===================== DRAW — every START is the same ring-free "cup" shape ===================== */
+function drawCup(x,y,w,strokeColor,fillColor,label,glow){
+  if(glow){
+    const pulse=1+Math.sin(Date.now()/140)*0.12;
+    const grad=ctx.createRadialGradient(x,y,0,x,y,w*1.6*pulse);
+    grad.addColorStop(0,"rgba(255,220,80,.5)");
+    grad.addColorStop(0.6,"rgba(255,180,30,.18)");
+    grad.addColorStop(1,"rgba(255,180,30,0)");
+    ctx.fillStyle=grad;
+    ctx.beginPath(); ctx.arc(x,y,w*1.6*pulse,0,Math.PI*2); ctx.fill();
+    const t=Date.now()/300;
+    for(let k=0;k<5;k++){
+      const ang=t+k*(Math.PI*2/5);
+      const px=x+Math.cos(ang)*(w*0.85), py=y+Math.sin(ang)*(w*0.5)-4;
+      ctx.fillStyle="rgba(255,230,150,.9)";
+      ctx.beginPath(); ctx.arc(px,py,1.2,0,Math.PI*2); ctx.fill();
+    }
+  }
+  const topW=w/2, botW=w/2*0.45, depth=11;
+  ctx.beginPath();
+  ctx.moveTo(x-topW, y-8);
+  ctx.lineTo(x-botW, y+depth);
+  ctx.lineTo(x+botW, y+depth);
+  ctx.lineTo(x+topW, y-8);
+  ctx.closePath();
+  ctx.lineWidth=2.2;
+  ctx.strokeStyle=strokeColor;
+  ctx.fillStyle=fillColor;
+  ctx.fill();
+  ctx.stroke();
+  // dark interior well (not a decorative ring — just the shaded inside of the cup)
+  ctx.beginPath();
+  ctx.moveTo(x-topW*0.85, y-6);
+  ctx.lineTo(x-botW*0.7, y+depth-2);
+  ctx.lineTo(x+botW*0.7, y+depth-2);
+  ctx.lineTo(x+topW*0.85, y-6);
+  ctx.closePath();
+  ctx.fillStyle="#050512";
+  ctx.fill();
+  if(label){
+    ctx.font="8px sans-serif"; ctx.fillStyle=strokeColor; ctx.textAlign="center";
+    ctx.fillText(label, x, y+depth+11);
+  }
+}
+function drawBoard(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle="#3a3060";
+  for(const p of pegs){ ctx.beginPath(); ctx.arc(p.x,p.y,2.4,0,Math.PI*2); ctx.fill(); }
+
+  if(fever.active){
+    for(const s of feverStarts){
+      drawCup(s.x, s.y, s.w, s.color, "rgba(255,255,255,.06)", "+"+s.value, false);
+    }
+    if(feverGold){
+      drawCup(feverGold.x, feverGold.y, feverGold.w, "#ffcc33", "rgba(255,204,51,.16)", "+"+feverGold.value, true);
+    }
+  } else {
+    drawCup(hesso.x, hesso.y, hesso.w, "#ff2ec4", "rgba(255,46,196,.10)", "START", false);
+    if(golden){
+      drawCup(golden.x, golden.y, golden.w, "#ffcc33", "rgba(255,204,51,.16)", "GOLD", true);
+      if(DEBUG_MODE_ON){
+        const R=(golden.w/2)*1.15;
+        ctx.beginPath();
+        ctx.arc(golden.x, golden.y, R, 0, Math.PI*2);
+        ctx.strokeStyle="rgba(57,255,143,.9)";
+        ctx.lineWidth=1.5;
+        ctx.setLineDash([4,3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.font="8px monospace"; ctx.fillStyle="#39ff8f"; ctx.textAlign="center";
+        ctx.fillText("HITBOX", golden.x, golden.y-R-4);
+      }
+    }
+  }
+
+  ctx.fillStyle= fever.active? "#ffdca0":"#fff";
+  for(const b of balls){ ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill(); }
+}
+
+/* ===================== MAIN LOOP ===================== */
+let rafId=null, lastTs=0, fireAccum=0, autoSpeed=1;
+function loop(ts){
+  if(!lastTs) lastTs=ts;
+  const dt=Math.min(60, ts-lastTs);
+  lastTs=ts;
+  if(running && !paused){
+    stepPhysics();
+    if(fever.active){ updateFeverTimer(dt); }
+    else {
+      updateHessoMovement(dt);
+      updateGoldenSystem(dt); updateEnemyTimer(dt);
+      if(enemy && enemy.type==="boss") updateBossGimmick(dt);
+      updateGreedCurse(dt);
+    }
+    tryAutoFire(dt);
+  }
+  drawBoard();
+  rafId=requestAnimationFrame(loop);
+}
+function updateGreedCurse(dt){
+  if(!player.greedCurse) return;
+  player.greedTimer += dt;
+  if(player.greedTimer>=4000){
+    player.greedTimer=0;
+    const dmg=Math.max(1, Math.round(player.maxHp*0.02));
+    player.hp=Math.max(1, player.hp-dmg);
+    popDamage("-"+dmg,"heal");
+    updatePlayerBar();
+  }
+}
+
+/* ===================== BOSS GIMMICKS ===================== */
+let bossGimmick=null;
+function startBossGimmick(){
+  stopBossGimmick();
+  if(!enemy || enemy.type!=="boss") return;
+  bossGimmick={key:enemy.key, timer:3000};
+  if(enemy.key==="chaosemperor"){ toast("👑 盤面が不安定になっている…"); }
+  if(enemy.key==="voiddragon"){ toast("🐉 弱点が左右に動いている…"); }
+  if(enemy.key==="irongolem"){ toast("🗿 弱点STARTが時々出現する…"); }
+}
+function stopBossGimmick(){
+  bossGimmick=null;
+  if(golden && golden.isWeakPoint) golden=null; // never let a leftover weak-point bleed into later floors
+}
+function updateBossGimmick(dt){
+  if(!bossGimmick || !player) return;
+  bossGimmick.timer -= dt;
+  if(bossGimmick.timer>0) return;
+  if(bossGimmick.key==="irongolem"){
+    bossGimmick.timer=3500;
+    if(!golden){
+      golden={ x:W*(0.25+Math.random()*0.5), y:H*(0.35+Math.random()*0.2), w:hesso.w*0.8, vx:0, vy:0, life:2500, dirTimer:99999, isWeakPoint:true };
+      toast("🗿 弱点出現！大ダメージのチャンス！");
+    }
+  } else if(bossGimmick.key==="voiddragon"){
+    bossGimmick.timer=60;
+    hesso.x = W/2 + Math.sin(Date.now()/500)*W*0.28;
+  } else if(bossGimmick.key==="chaosemperor"){
+    bossGimmick.timer=4000;
+    updateHessoGeom();
+    hesso.x = 40+Math.random()*(W-80);
+    hesso.w *= (0.7+Math.random()*0.6);
+    toast("👑 STARTの位置とサイズが変化した！");
+  }
+}
+
+/* ===================== COMBAT / UI HELPERS ===================== */
+function toast(msg){
+  const t=document.createElement("div");
+  t.className="toast"; t.textContent=msg;
+  toastArea.appendChild(t);
+  setTimeout(()=>t.remove(),2200);
+}
+function showBigMsg(text,color){
+  bigMsg.style.color=color||"#fff";
+  bigMsg.textContent=text;
+  bigMsg.classList.remove("show"); void bigMsg.offsetWidth;
+  bigMsg.classList.add("show");
+}
+function shakeEnemy(){ enemyVisual.classList.add("shake"); setTimeout(()=>enemyVisual.classList.remove("shake"),300); }
+function popDamage(text,cls){
+  const d=document.createElement("div");
+  d.className="dmgPopup"+(cls?" "+cls:"");
+  d.textContent=text;
+  d.style.left=(30+Math.random()*36)+"%";
+  d.style.top=(28+Math.random()*30)+"%";
+  dmgPopupLayer.appendChild(d);
+  setTimeout(()=>d.remove(),900);
+}
+function comboMultiplier(count){
+  let mult=1;
+  if(count>=20) mult=2.0; else if(count>=10) mult=1.5; else if(count>=5) mult=1.25; else if(count>=3) mult=1.1;
+  mult += player.comboBonusMult>0 ? (mult-1)*player.comboBonusMult : 0;
+  return mult;
+}
+
+function dealDamage(){
+  const isCrit = Math.random() < player.critChance;
+  const atkBuff=player._tempAtkBuff||1; player._tempAtkBuff=1;
+  const tempAtk=(player.tempAtkBoost||1);
+  let dmg = player.atk*tempAtk*atkBuff * player.dmgMult * comboMultiplier(player.comboCount) + player.fixedDmg;
+  if(isCrit) dmg *= player.critDmgMult;
+  if(player.combo5Extra && player.comboCount>0 && player.comboCount%5===0) dmg *= 1.5;
+  if(player.berserker && enemy.maxHp>0) dmg *= 1 + (enemy.hp/enemy.maxHp)*0.6;
+  if(player.goldenWarriorLv>0){
+    const lvDef=GOLDEN_WARRIOR_LEVELS[player.goldenWarriorLv-1];
+    const bonus=Math.min(1.0, Math.floor(player.runStats.grossGained/lvDef.divisor)*0.01);
+    dmg *= (1+bonus);
+  }
+  let ballCannonHit=false;
+  if(player.ballCannon && player.comboCount>0 && player.comboCount%4===0){ dmg*=1.5; ballCannonHit=true; }
+  dmg=Math.max(1, Math.round(dmg));
+
+  let finalDmg=dmg;
+  if(enemy.dmgReduction) finalDmg=finalDmg*(1-enemy.dmgReduction);
+  if(enemy.dmgBlock) finalDmg=Math.max(1, finalDmg-enemy.dmgBlock);
+  finalDmg=Math.round(finalDmg);
+
+  enemy.hp=Math.max(0, enemy.hp-finalDmg);
+  player.runStats.totalDamage += finalDmg;
+  meta.stats.bestDamage=Math.max(meta.stats.bestDamage, finalDmg);
+
+  enemyVisual.classList.remove("hit"); void enemyVisual.offsetWidth; enemyVisual.classList.add("hit");
+  shakeEnemy();
+
+  let cls = isCrit? "crit" : "";
+  let label = finalDmg.toLocaleString();
+  if(isCrit) label="CRITICAL!\n×"+player.critDmgMult.toFixed(1)+"\n-"+label;
+  else if(ballCannonHit){ label="BALL CANNON!\n-"+label; cls="crit"; }
+  else if(finalDmg > enemy.maxHp*0.35){ label="MASSIVE!!\n-"+label; cls="massive"; }
+  popDamage(label, cls);
+  if(isCrit) SE.crit();
+
+  updateEnemyBar(); updatePlayerBar();
+  if(enemy.hp<=0){ onEnemyDown(); }
+}
+
+function onHesso(){
+  if(!running || paused) return;
+  SE.hit();
+  player.comboCount++;
+  player.runStats.maxCombo=Math.max(player.runStats.maxCombo, player.comboCount);
+  meta.stats.bestCombo=Math.max(meta.stats.bestCombo, player.comboCount);
+  comboLabel.classList.remove("fever");
+  comboLabel.textContent=player.comboCount+" HIT";
+  comboLabel.classList.add("show");
+  dealDamage();
+}
+function onMiss(){
+  if(!running || paused) return;
+  SE.miss();
+  if(player.comboShield>0){ player.comboShield--; toast("コンボ維持！"); }
+  else { player.comboCount=0; comboLabel.classList.remove("show"); }
+}
+
+/* ===================== ENEMY REAL-TIME ATTACK (paused during FEVER) ===================== */
+function updateEnemyTimer(dt){
+  if(!enemy || enemy.hp<=0) return;
+  enemy.atkTimer -= dt;
+  const secLeft=enemy.atkTimer/1000;
+  nextAttackVal.textContent=Math.max(0,secLeft).toFixed(1)+"s";
+  nextAttackVal.classList.remove("warn","danger");
+  if(secLeft<=3 && secLeft>1) nextAttackVal.classList.add("warn");
+  else if(secLeft<=1) nextAttackVal.classList.add("danger");
+  if(enemy._warned3!==true && Math.ceil(secLeft)===3){ toast("⚠️ ATTACK!"); enemy._warned3=true; }
+  if(enemy.atkTimer<=0){
+    enemy.atkTimer=enemy.atkInterval;
+    enemy._warned3=null;
+    enemyAttack();
+  }
+}
+function enemyAttack(){
+  if(!running || !enemy || enemy.hp<=0 || fever.active) return;
+  warnFlash.classList.remove("show"); void warnFlash.offsetWidth; warnFlash.classList.add("show");
+  if(player.nullifyCharge>0){ player.nullifyCharge--; toast("敵の攻撃を無効化した！"); return; }
+  let dmg=Math.round(enemy.atk*(1-player.damageReduction));
+  if(enemy.critAgainstPlayer && Math.random()<enemy.critAgainstPlayer) dmg=Math.round(dmg*1.8);
+  player.hp=Math.max(0, player.hp-dmg);
+  SE.enemyAtk();
+  toast(`${enemy.name}の攻撃！ -${dmg}`);
+  if(player.revenge){ player._tempAtkBuff=(player._tempAtkBuff||1)+dmg*0.002; }
+  if(enemy.lifesteal){ enemy.hp=Math.min(enemy.maxHp, enemy.hp+Math.round(dmg*enemy.lifesteal)); updateEnemyBar(); }
+  updatePlayerBar();
+  if(player.hp<=0){
+    if(player.reviveCharge>0){ player.reviveCharge--; player.hp=1; toast("死亡を回避した！"); updatePlayerBar(); }
+    else { onGameOver(); }
+  }
+}
+
+/* ===================== ENEMY DOWN / FLOOR PROGRESSION ===================== */
+const MAX_FLOOR=30;
+async function onEnemyDown(){
+  running=false;
+  const wasBoss = enemy.type==="boss";
+  SE.enemyDown();
+  showBigMsg(wasBoss? "BOSS DEFEATED!!":"ENEMY DEFEATED","var(--neon-red)");
+
+  const rewardMult=(player.nextRewardMult||1)*player.coinMultiplier;
+  const coinGain=Math.round(enemy.coinReward*rewardMult);
+  addCoins(coinGain, wasBoss? "Boss Kill":"Enemy Kill");
+  player.runStats.enemiesKilled++;
+  popDamage("+"+coinGain.toLocaleString()+" COIN", "coinbig");
+  if(player.goldenBerserker){
+    player.tempAtkBoost = Math.max(1, (player.tempAtkBoost||1)) + Math.min(0.8, coinGain*0.0006);
+    toast("GOLDEN BERSERKER: 攻撃力に転化！");
+  }
+
+  if(wasBoss){
+    SE.bossDown();
+    player.runStats.bossesKilled++;
+    await sleep(500);
+    addCoins(BOSS_BONUS_COIN, "Boss Bonus");
+    popDamage("BOSS BONUS\n+"+BOSS_BONUS_COIN, "coinbig");
+    await sleep(500);
+    showBigMsg("✨ HP FULL RECOVERY!! ✨","var(--neon-green)");
+    SE.heal();
+    hpBar.classList.add("fullheal");
+    player.hp = player.maxHp;
+    popDamage("❤️ HP RECOVER", "heal");
+    updatePlayerBar();
+    await sleep(1100);
+    hpBar.classList.remove("fullheal");
+  }
+
+  player.nextRewardMult=1; player.tempAtkBoost=1; player.tempHessoBoost=1;
+  updateHessoGeom();
+  stopBossGimmick();
+
+  await sleep(700);
+  if(wasBoss && currentFloor%10===0 && currentFloor<MAX_FLOOR){
+    await showMajorReward();
+    await advanceAfterRoom();
+    return;
+  }
+  showPowerupSelect();
+}
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+/* ===================== ROUTE PROGRESSION (BATTLE / TREASURE / ELITE / EVENT / SHOP / BOSS) ===================== */
+function isBossFloor(f){ return f%5===0; }
+function isRouteFloor(f){ return f%5===1; } // room choice happens once every 5 floors, right after a boss
+async function advanceAfterRoom(){
+  currentFloor++;
+  player.runStats.maxFloor=Math.max(player.runStats.maxFloor, currentFloor);
+  meta.stats.bestFloor=Math.max(meta.stats.bestFloor, currentFloor);
+  if(currentFloor>MAX_FLOOR){ showEndModal(true); return; }
+  await playFloorTransition(currentFloor);
+  if(isBossFloor(currentFloor)){
+    setupFloor(currentFloor,"boss");
+  } else if(isRouteFloor(currentFloor)){
+    showRouteSelect(currentFloor);
+  } else {
+    setupFloor(currentFloor,"battle");
+  }
+}
+const ROOM_DEFS={
+  battle:{icon:"⚔️",name:"BATTLE",desc:"通常戦闘。敵を倒すとコインを獲得する。"},
+  treasure:{icon:"💰",name:"TREASURE",desc:"敵と戦わずに大量のコインを獲得できる部屋。"},
+  elite:{icon:"💎",name:"ELITE",desc:"通常より強い敵。その分、高レアの強化と多めのコインを得られる。"},
+  event:{icon:"🌀",name:"EVENT",desc:"ランダムな特殊イベントが発生する。"},
+  shop:{icon:"🧙",name:"SHOP",desc:"コインを使って回復や強化を購入できる。"},
+};
+function pickRouteOptions(){
+  const weighted=["battle","battle","battle","elite","elite","treasure","event","shop"];
+  const pool=weighted.slice();
+  const picks=[];
+  while(picks.length<3 && pool.length>0){
+    const idx=Math.floor(Math.random()*pool.length);
+    const t=pool.splice(idx,1)[0];
+    if(!picks.includes(t)) picks.push(t);
+    else pool.splice(pool.indexOf(t),1);
+  }
+  while(picks.length<3){ const rest=Object.keys(ROOM_DEFS).filter(t=>!picks.includes(t)); if(!rest.length) break; picks.push(rest[Math.floor(Math.random()*rest.length)]); }
+  return picks;
+}
+let _forcedRouteType=null; // debug hook
+function showRouteSelect(f){
+  releaseFire();
+  const picks = _forcedRouteType? [_forcedRouteType] : pickRouteOptions();
+  _forcedRouteType=null;
+  const wrap=document.createElement("div");
+  wrap.className="puWrap";
+  wrap.innerHTML=`<div class="puBox"><h2>次の部屋を選択</h2><div class="puSub">FLOOR ${f}${isBossFloor(f+1)?" — 次はBOSS FLOOR":""}</div><div id="routeCards"></div></div>`;
+  document.body.appendChild(wrap);
+  const cardsWrap=wrap.querySelector("#routeCards");
+  picks.forEach(type=>{
+    const d=ROOM_DEFS[type];
+    const card=document.createElement("div");
+    card.className="routeCard";
+    card.innerHTML=`<div class="rIcon">${d.icon}</div><div class="rName">${d.name}</div><div class="rDesc">${d.desc}</div>`;
+    card.addEventListener("click", async ()=>{
+      wrap.remove();
+      SE.click();
+      if(type==="battle"||type==="elite"){ setupFloor(f, type); }
+      else if(type==="treasure"){ await showTreasureRoom(f); }
+      else if(type==="event"){ await showEventModal(); await advanceAfterRoom(); }
+      else if(type==="shop"){ await showShop(f); }
+    });
+    cardsWrap.appendChild(card);
+  });
+}
+function showTreasureRoom(f){
+  return new Promise(resolve=>{
+    const gain=Math.round((150+f*20)*player.coinMultiplier);
+    const wrap=document.createElement("div");
+    wrap.className="modalWrap";
+    wrap.innerHTML=`<div class="modalBox"><h2>💰 TREASURE ROOM</h2>
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;">敵のいない宝物庫を見つけた。</div>
+      <div class="statLine highlight"><span>獲得コイン</span><b>+${gain.toLocaleString()}</b></div>
+      <button class="modalBtn" id="trOk">受け取って進む</button></div>`;
+    document.body.appendChild(wrap);
+    wrap.querySelector("#trOk").addEventListener("click", async ()=>{
+      addCoins(gain, "Treasure Room");
+      wrap.remove();
+      await advanceAfterRoom();
+      resolve();
+    });
+  });
+}
+function showShop(f){
+  return new Promise(resolve=>{
+    const items=[
+      {id:"heal",label:"❤️ HP全回復",cost:150,apply:()=>{ player.hp=player.maxHp; updatePlayerBar(); }},
+      {id:"atk",label:"⚔️ 攻撃力+15%",cost:300,apply:()=>{ player.atk=Math.round(player.atk*1.15); updatePlayerBar(); }},
+      {id:"buff",label:"💥 次の部屋DMG+50%(一時)",cost:200,apply:()=>{ player.tempAtkBoost=(player.tempAtkBoost||1)*1.5; updatePlayerBar(); }},
+      {id:"hesso",label:"◎ STARTサイズ+15%",cost:250,apply:()=>{ player.hessoMult*=1.15; updateHessoGeom(); updatePlayerBar(); }},
+    ];
+    const wrap=document.createElement("div");
+    wrap.className="modalWrap";
+    function render(){
+      wrap.innerHTML=`<div class="modalBox"><h2>🧙 SHOP</h2>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;">所持コイン: ${Math.floor(player.coin).toLocaleString()}</div>
+        <div id="shopItems"></div>
+        <button class="modalBtn" id="shopLeave">出発する</button></div>`;
+      const list=wrap.querySelector("#shopItems");
+      items.forEach(it=>{
+        const row=document.createElement("div");
+        row.className="shopItem";
+        row.innerHTML=`<span>${it.label}<br><span style="color:var(--neon-gold);">🪙${it.cost}</span></span><button ${it.bought||player.coin<it.cost?"disabled":""}>購入</button>`;
+        row.querySelector("button").addEventListener("click",()=>{
+          if(it.bought || player.coin<it.cost) return;
+          spendCoins(it.cost, "Shop: "+it.label);
+          it.apply();
+          it.bought=true;
+          SE.coin();
+          render();
+        });
+        list.appendChild(row);
+      });
+      wrap.querySelector("#shopLeave").addEventListener("click", async ()=>{
+        wrap.remove();
+        await advanceAfterRoom();
+        resolve();
+      });
+    }
+    render();
+    document.body.appendChild(wrap);
+  });
+}
+function showMajorReward(){
+  return new Promise(resolve=>{
+    const bonus=Math.round((500+currentFloor*20)*player.coinMultiplier);
+    addCoins(bonus, "Major Reward");
+    let pool=POWERUPS.filter(p=>(p.rarity==="legendary"||p.rarity==="mythic") && !p.isCursed);
+    if(pool.length<2) pool=POWERUPS.filter(p=>!p.isCursed);
+    const picks=[];
+    const copy=pool.slice();
+    for(let i=0;i<2 && copy.length>0;i++){ const idx=Math.floor(Math.random()*copy.length); picks.push(copy.splice(idx,1)[0]); }
+    const wrap=document.createElement("div");
+    wrap.className="puWrap";
+    wrap.innerHTML=`<div class="puBox"><h2>🎁 MAJOR REWARD</h2><div class="puSub">FLOOR ${currentFloor} 到達ボーナス — +${bonus.toLocaleString()} COIN獲得！<br>さらに強力な強化を1つ選べる</div><div id="mrCards"></div></div>`;
+    document.body.appendChild(wrap);
+    const cardsWrap=wrap.querySelector("#mrCards");
+    picks.forEach(pu=>{
+      const card=document.createElement("div");
+      card.className="puCard "+pu.rarity+(pu.isCursed?" cursed":"");
+      card.innerHTML=`<div class="puRarity">${pu.rarity.toUpperCase()}</div><div class="puCat">${pu.tag}</div>
+        <div class="puName">${pu.name}</div><div class="puDesc">${pu.desc}</div>${pu.isCursed?`<div class="puCurse">⚠️ ${pu.curse}</div>`:""}`;
+      card.addEventListener("click",()=>{
+        grantPowerup(pu);
+        SE.powerup();
+        wrap.remove();
+        resolve();
+      });
+      cardsWrap.appendChild(card);
+    });
+  });
+}
+
+/* ===================== EVENT / POWERUP MODALS ===================== */
+function showEventModal(){
+  releaseFire();
+  return new Promise(resolve=>{
+    const ev=EVENTS[Math.floor(Math.random()*EVENTS.length)];
+    const wrap=document.createElement("div");
+    wrap.className="modalWrap";
+    wrap.innerHTML=`<div class="modalBox"><h2>${ev.name}</h2>
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:6px;">${ev.desc}</div>
+      <button class="modalBtn" id="evOk">受け入れる</button></div>`;
+    document.body.appendChild(wrap);
+    wrap.querySelector("#evOk").addEventListener("click",()=>{ ev.apply(player); wrap.remove(); resolve(); });
+  });
+}
+function rerollCost(){ const table=[100,250,500,1000]; const n=player.rerollCount; return n<table.length? table[n] : table[table.length-1]+ (n-table.length+1)*500; }
+function showPowerupSelect(){
+  releaseFire();
+  paused=true;
+  const wrap=document.createElement("div");
+  wrap.className="puWrap";
+  document.body.appendChild(wrap);
+  function render(){
+    const pool=POWERUPS.slice();
+    const picks=[];
+    for(let i=0;i<3 && pool.length>0;i++){ const idx=Math.floor(Math.random()*pool.length); picks.push(pool.splice(idx,1)[0]); }
+    const cost=rerollCost();
+    wrap.innerHTML=`<div class="puBox"><h2>CHOOSE YOUR POWER</h2><div class="puSub">FLOOR ${currentFloor} CLEAR!</div>
+      <div id="puCards"></div>
+      <button class="modalBtn secondary" id="rerollBtn" ${player.coin<cost?"disabled":""}>🔄 リロール (🪙${cost})</button></div>`;
+    const cardsWrap=wrap.querySelector("#puCards");
+    picks.forEach(pu=>{
+      const card=document.createElement("div");
+      card.className="puCard "+pu.rarity+(pu.isCursed?" cursed":"");
+      card.innerHTML=`<div class="puRarity">${pu.rarity.toUpperCase()}</div><div class="puCat">${TAG_ICON[pu.tag]||""} ${pu.tag}</div>
+        <div class="puName">${pu.name}</div><div class="puDesc">${pu.desc}</div>${pu.isCursed?`<div class="puCurse">⚠️ ${pu.curse}</div>`:""}`;
+      card.addEventListener("click", async ()=>{
+        grantPowerup(pu);
+        SE.powerup();
+        wrap.remove();
+        paused=false;
+        await advanceAfterRoom();
+      });
+      cardsWrap.appendChild(card);
+    });
+    wrap.querySelector("#rerollBtn").addEventListener("click",()=>{
+      if(player.coin<cost) return;
+      spendCoins(cost,"Reroll");
+      player.rerollCount++;
+      SE.click();
+      render();
+    });
+  }
+  render();
+}
+
+/* ===================== FLOOR TRANSITION (short dungeon-door effect) ===================== */
+function playFloorTransition(f){
+  return new Promise(resolve=>{
+    SE.door();
+    const theme=dungeonThemeForFloor(f);
+    floorTransitionText.textContent = theme.isBoss? `⚠️ BOSS FLOOR ${f} ⚠️` : `FLOOR ${f} へ進む…（${theme.name}）`;
+    floorTransition.style.opacity=1;
+    setTimeout(()=>{
+      floorTransition.style.opacity=0;
+      setTimeout(resolve, 260);
+    }, 480);
+  });
+}
+
+/* ===================== FLOOR SETUP ===================== */
+function setupFloor(f, type){
+  type = type || "battle";
+  golden=null; // never carry a stale GOLDEN START / boss weak-point into a new floor
+  enemy=enemyForFloor(f,type==="battle"?"normal":type);
+  updateHessoGeom(true);
+  updateDungeonHeader(f);
+  enemyVisual.textContent=enemy.emoji;
+  enemyVisual.classList.toggle("boss", type==="boss");
+  eName.textContent=(type==="boss"?"👑 ":type==="elite"?"⚡ ":"")+enemy.name;
+  eLv.textContent="LV."+enemy.lv;
+  updateEnemyBar(); updatePlayerBar();
+  if(type==="boss"){
+    SE.boss();
+    flashGoldenBanner("⚠️ WARNING ⚠️\nBOSS FLOOR "+f);
+    startBossGimmick();
+  } else {
+    stopBossGimmick();
+  }
+  running=true; paused=false;
+  saveRun(true);
+}
+
+/* ===================== UI UPDATE ===================== */
+function updatePlayerBar(){
+  hpVal.textContent=Math.max(0,Math.round(player.hp))+" / "+Math.round(player.maxHp);
+  hpBar.style.width=Math.max(0,(player.hp/player.maxHp*100))+"%";
+  atkVal.textContent=Math.round(player.atk*(player.tempAtkBoost||1));
+  multVal.textContent="×"+player.dmgMult.toFixed(1);
+  critVal.textContent=Math.round(player.critChance*100)+"%";
+  holeVal.textContent=Math.round(player.hessoMult*100)+"%";
+  coinVal.textContent=Math.floor(player.coin).toLocaleString();
+}
+function updateEnemyBar(){
+  enemyHpBar.style.width=Math.max(0,(enemy.hp/enemy.maxHp*100))+"%";
+  enemyHpText.textContent=Math.max(0,Math.round(enemy.hp)).toLocaleString()+"/"+enemy.maxHp.toLocaleString();
+}
+
+/* ===================== FIRE (fully automatic — no button needed) ===================== */
+const SPEED_LABELS=["×1","×2","×4"];
+function updateSpeedBtn(){ speedBtn.textContent=SPEED_LABELS[autoSpeed-1]; }
+function shootOnce(){
+  if(!running || paused) return;
+  SE.shot();
+  spawnBall();
+}
+function tryAutoFire(dt){
+  if(!running || paused) return;
+  const rate=player.fireRate*autoSpeed*(fever.active?1.4:1);
+  fireAccum += dt;
+  const interval=1000/rate;
+  if(fireAccum>=interval){ fireAccum=0; shootOnce(); }
+}
+function releaseFire(){ /* no-op: firing is fully automatic now, nothing to release */ }
+speedBtn.addEventListener("click",()=>{ autoSpeed=autoSpeed%3+1; updateSpeedBtn(); });
+
+/* ===================== BUILD INFO MODAL ===================== */
+buildBtn.addEventListener("click",()=>{
+  if(!player) return;
+  const wasPaused=paused;
+  paused=true; releaseFire();
+  const tagRows = TAGS.map(tag=>{
+    const count=player.buildTags[tag]||0;
+    const defs=SET_BONUS_DEFS[tag]||[];
+    const maxCount=defs.length? defs[defs.length-1].count : 8;
+    const pct=Math.min(100, Math.round(count/maxCount*100));
+    return `<div class="tagRow"><span>${TAG_ICON[tag]} ${tag} ×${count}</span>
+      <span class="tagBar"><span class="tagBarFill" style="width:${pct}%"></span></span>
+      <span style="font-size:10px;color:var(--text-dim);white-space:nowrap;">${nextSetBonusHint(tag)}</span></div>`;
+  }).join("");
+  const unlockedSet = player.unlockedSetBonuses.length
+    ? player.unlockedSetBonuses.map(uid=>{
+        const [tag,cnt]=uid.split(":");
+        const def=(SET_BONUS_DEFS[tag]||[]).find(d=>String(d.count)===cnt);
+        return def? `✅ ${TAG_ICON[tag]} ${def.name}` : "";
+      }).join("<br>")
+    : "まだ発動していません";
+  const crossHints = CROSS_SYNERGY_DEFS.map(def=>{
+    const done=player.unlockedCrossSynergies.includes(def.id);
+    if(done) return `✅ ${def.name} — ${def.desc}`;
+    const need=Object.keys(def.tags).map(t=>{
+      const have=player.buildTags[t]||0, req=def.tags[t];
+      return have>=req? `${TAG_ICON[t]}✓` : `${TAG_ICON[t]}あと${req-have}`;
+    }).join(" / ");
+    const tagLabel=Object.keys(def.tags).map(t=>TAG_ICON[t]).join("×");
+    return `🔒 ${tagLabel} ${def.name} — ${need}`;
+  }).join("<br>");
+  const gwText = player.goldenWarriorLv>0
+    ? `🪙 GOLDEN WARRIOR Lv.${player.goldenWarriorLv} 発動中`
+    : `🪙 GOLDEN WARRIOR 未発動（累計コイン${Math.floor(player.runStats.grossGained).toLocaleString()} / ATTACK×${player.buildTags.ATTACK||0}）`;
+  const wrap=document.createElement("div");
+  wrap.className="modalWrap";
+  wrap.innerHTML=`<div class="modalBox">
+    <h2>🧩 BUILD</h2>
+    ${tagRows}
+    <div class="synList"><b>SET BONUS</b><br>${unlockedSet}</div>
+    <div class="synList"><b>SYNERGY</b><br>${crossHints}</div>
+    <div class="synList">${gwText}</div>
+    <button class="modalBtn" id="buildClose">閉じる</button>
+  </div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector("#buildClose").addEventListener("click",()=>{ wrap.remove(); paused=wasPaused; });
+});
+
+/* ===================== PAUSE MENU ===================== */
+menuBtn.addEventListener("click",()=>{
+  if(!running && !paused) return;
+  releaseFire();
+  const wasPaused=paused;
+  paused=true;
+  const wrap=document.createElement("div");
+  wrap.className="modalWrap";
+  const puList = player.runStats.powerups.length
+    ? player.runStats.powerups.map(n=>`<div>・${n}</div>`).join("")
+    : "<div>まだ取得していません</div>";
+  const netChange = Math.round((player.coin-player.startCoin)*10)/10;
+  wrap.innerHTML=`<div class="modalBox">
+    <h2>☰ MENU</h2>
+    <div class="statLine"><span>FLOOR</span><b>${currentFloor}</b></div>
+    <div class="statLine"><span>START時コイン</span><b>${Math.floor(player.startCoin).toLocaleString()}</b></div>
+    <div class="statLine highlight"><span>RUN中の純増減</span><b>${netChange>=0?"+":""}${netChange.toLocaleString()}</b></div>
+    <div class="statLine"><span>現在の所持コイン</span><b>${Math.floor(player.coin).toLocaleString()}</b></div>
+    <div class="statLine"><span>総ダメージ</span><b>${player.runStats.totalDamage.toLocaleString()}</b></div>
+    <div class="statLine"><span>最大通常コンボ</span><b>${player.runStats.maxCombo}</b></div>
+    <div class="statLine"><span>最大FEVERコンボ</span><b>${player.runStats.maxFeverCombo}</b></div>
+    <div class="statLine"><span>撃破数(ボス含む)</span><b>${player.runStats.enemiesKilled} (${player.runStats.bossesKilled})</b></div>
+    <div class="puListSmall">${puList}</div>
+    <button class="modalBtn" id="mResume">再開する</button>
+    <button class="modalBtn secondary" id="mCoinLog">コイン収支ログを見る</button>
+    <button class="modalBtn secondary" id="mSound">音: ${soundOn?"ON":"OFF"}</button>
+    <button class="modalBtn secondary" id="mExit">ランを終了してタイトルへ</button>
+  </div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector("#mResume").addEventListener("click",()=>{ paused=wasPaused; wrap.remove(); });
+  wrap.querySelector("#mCoinLog").addEventListener("click",()=>{ showCoinLog(); });
+  wrap.querySelector("#mSound").addEventListener("click",(e)=>{ soundOn=!soundOn; e.target.textContent="音: "+(soundOn?"ON":"OFF"); });
+  wrap.querySelector("#mExit").addEventListener("click",()=>{
+    wrap.remove();
+    running=false; paused=false;
+    showEndModal(false, true);
+  });
+});
+function showCoinLog(){
+  const recent=coinLog.slice(-30).reverse();
+  const html = recent.length
+    ? recent.map(l=>`<div class="coinLogLine"><span>${l.reason}</span><span>${l.amount>=0?"+":""}${l.amount} → ${l.balance}</span></div>`).join("")
+    : "<div>ログがありません</div>";
+  const wrap=document.createElement("div");
+  wrap.className="modalWrap";
+  wrap.innerHTML=`<div class="modalBox"><h2>🪙 コイン収支ログ</h2><div class="puListSmall" style="max-height:300px;">${html}</div>
+    <button class="modalBtn secondary" id="clClose">閉じる</button></div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector("#clClose").addEventListener("click",()=>wrap.remove());
+}
+
+/* ===================== GAME OVER / RUN CLEAR ===================== */
+function onGameOver(){
+  running=false;
+  SE.gameover();
+  showEndModal(false);
+}
+function showEndModal(cleared, manualExit){
+  // Final coin is taken directly from player.coin, which has been mirrored into the
+  // persistent (strengthen-screen) balance the whole time — nothing is recomputed here.
+  const finalCoin = Math.floor(player.coin);
+  const netChange = Math.round((player.coin-player.startCoin)*10)/10;
+  meta.stats.runsPlayed++;
+  meta.stats.totalCoinsEarned += Math.max(0, Math.floor(netChange));
+  saveMeta();
+  clearRunSave(); // this run is over — nothing left to CONTINUE
+  const rows=[
+    ["到達FLOOR", player.runStats.maxFloor],
+    ["START時コイン", Math.floor(player.startCoin).toLocaleString()],
+    ["RUN中の純増減", (netChange>=0?"+":"")+netChange.toLocaleString()],
+    ["最終コイン（所持コインと同じ）", finalCoin.toLocaleString()],
+    ["最大FEVER獲得COIN(単発)", meta.stats.bestFeverCoin.toLocaleString()],
+    ["最大FEVERコンボ", player.runStats.maxFeverCombo],
+    ["GOLDEN START入賞回数", player.runStats.goldenHitCount],
+    ["敵撃破数(ボス)", player.runStats.enemiesKilled+" ("+player.runStats.bossesKilled+")"],
+    ["最大ダメージ(一撃)", meta.stats.bestDamage.toLocaleString()],
+    ["取得パワーアップ数", player.runStats.powerups.length],
+  ];
+  const wrap=document.createElement("div");
+  wrap.className="modalWrap";
+  wrap.innerHTML=`<div class="modalBox runResult">
+    <h2>${cleared? "🎉 RUN CLEAR!!": manualExit? "🚪 RUN COMPLETE":"💀 YOU DIED"}</h2>
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">RUN RESULT（ゲーム中の実際の増減をそのまま表示）</div>
+    ${rows.map(([k,v],i)=>`<div class="statLine${i<=3?' highlight':''}"><span>${k}</span><b>${v}</b></div>`).join("")}
+    <button class="modalBtn" id="backTitle">タイトルへ戻る</button>
+  </div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector("#backTitle").addEventListener("click",()=>{
+    wrap.remove();
+    gameScreenWrap.classList.add("hidden");
+    titleScreen.classList.remove("hidden");
+    renderTitle();
+  });
+}
+
+/* ===================== TITLE / META RENDER ===================== */
+function renderTitle(){
+  metaCoinVal.textContent=meta.coin.toLocaleString();
+  metaList.innerHTML="";
+  META_DEFS.forEach(d=>{
+    const lvl=meta[d.key];
+    const cost=metaCost(lvl);
+    const row=document.createElement("div");
+    row.className="metaRow";
+    row.innerHTML=`<span>${d.icon} ${d.label} <span style="color:var(--text-dim);">Lv.${lvl}</span></span>
+      <button class="mBtn" ${meta.coin<cost?"disabled":""}>🪙${cost}</button>`;
+    row.querySelector("button").addEventListener("click",()=>{
+      if(meta.coin<cost) return;
+      meta.coin-=cost; meta[d.key]++;
+      saveMeta(); renderTitle();
+      SE.click();
+    });
+    metaList.appendChild(row);
+  });
+  const s=meta.stats;
+  runHistoryBox.innerHTML = `過去のプレイ回数: ${s.runsPlayed}<br>最高到達FLOOR: ${s.bestFloor}　累計獲得コイン: ${s.totalCoinsEarned.toLocaleString()}<br>最大FEVER獲得: ${s.bestFeverCoin.toLocaleString()}　最大FEVERコンボ: ${s.bestFeverCombo}<br>最大通常コンボ: ${s.bestCombo}　GOLDEN START総数: ${s.goldenStartTotal}`;
+  const snap=loadRunSnapshot();
+  continueBtn.classList.toggle("hidden", !snap);
+  if(snap && saveStatusEl){
+    const secsAgo=Math.max(0, Math.round((Date.now()-snap.savedAt)/1000));
+    saveStatusEl.textContent=`💾 前回のRUN — FLOOR${snap.currentFloor} / 🪙${Math.floor(snap.player.coin).toLocaleString()}（${secsAgo}秒前に保存）`;
+  } else if(saveStatusEl){
+    saveStatusEl.textContent="";
+  }
+}
+
+/* ===================== DEBUG MODE ===================== */
+let titleTapCount=0, titleTapTimer=null;
+document.querySelector("#titleScreen h1").addEventListener("click",()=>{
+  titleTapCount++;
+  clearTimeout(titleTapTimer);
+  titleTapTimer=setTimeout(()=>titleTapCount=0,1500);
+  if(titleTapCount>=7){ titleTapCount=0; meta.coin+=500; saveMeta(); renderTitle(); toast("DEBUG: +500コイン"); }
+});
+dungeonFloorNum.addEventListener("click",()=>{
+  titleTapCount++;
+  clearTimeout(titleTapTimer);
+  titleTapTimer=setTimeout(()=>titleTapCount=0,1500);
+  if(titleTapCount>=7){ titleTapCount=0; openDebugPanel(); }
+});
+function openDebugPanel(){
+  if(document.getElementById("debugPanel")) return;
+  DEBUG_MODE_ON=true;
+  const panel=document.createElement("div");
+  panel.id="debugPanel";
+  panel.innerHTML=`
+    <h3>🛠 DEBUG MODE</h3>
+    <button id="dbgGoldenSpawn">GOLDEN START 強制出現</button>
+    <button id="dbgGoldenHit">GOLDEN START 強制入賞(FEVER開始)</button>
+    <button id="dbgFeverEnd">FEVER 即終了</button>
+    <button id="dbgMovingToggle">FEVER ZONE の移動 ON/OFF</button>
+    <button id="dbgStopEnemy">敵の攻撃を停止/再開</button>
+    <button id="dbgKillEnemy">敵を即撃破</button>
+    <button id="dbgGivePU">ランダムなパワーアップを付与</button>
+    <button id="dbgShowLog">コイン収支ログを表示</button>
+    <div class="dbgRow"><input id="dbgCoin" type="number" placeholder="コイン設定(addCoinsで反映)"><button id="dbgSetCoin" style="flex:0 0 56px;">設定</button></div>
+    <div class="dbgRow"><input id="dbgCoinMult" type="number" placeholder="コイン倍率(例:2)"><button id="dbgSetCoinMult" style="flex:0 0 56px;">設定</button></div>
+    <div class="dbgRow"><input id="dbgFeverSec" type="number" placeholder="FEVER残り秒"><button id="dbgSetFeverSec" style="flex:0 0 56px;">設定</button></div>
+    <div class="dbgRow"><input id="dbgFeverCombo" type="number" placeholder="FEVERコンボ設定"><button id="dbgSetFeverCombo" style="flex:0 0 56px;">設定</button></div>
+    <div class="dbgRow"><input id="dbgHp" type="number" placeholder="プレイヤーHP"><button id="dbgSetHp" style="flex:0 0 56px;">設定</button></div>
+    <div class="dbgRow"><input id="dbgAtk" type="number" placeholder="攻撃力"><button id="dbgSetAtk" style="flex:0 0 56px;">設定</button></div>
+    <div class="dbgRow"><input id="dbgDmg" type="number" placeholder="DMG倍率(例:2)"><button id="dbgSetDmg" style="flex:0 0 56px;">設定</button></div>
+    <div class="dbgRow"><input id="dbgCrit" type="number" placeholder="クリ率(例:0.5)"><button id="dbgSetCrit" style="flex:0 0 56px;">設定</button></div>
+    <div class="dbgRow"><input id="dbgHesso" type="number" placeholder="STARTサイズ倍率(例:2)"><button id="dbgSetHesso" style="flex:0 0 56px;">設定</button></div>
+    <div class="dbgRow"><input id="dbgGoldenSize" type="number" placeholder="GOLDEN倍率(例:1)"><button id="dbgSetGoldenSize" style="flex:0 0 56px;">設定</button></div>
+    <div class="dbgRow"><input id="dbgEnemyHp" type="number" placeholder="敵HP"><button id="dbgSetEnemyHp" style="flex:0 0 56px;">設定</button></div>
+    <div class="dbgRow"><input id="dbgFloor" type="number" placeholder="階層へジャンプ"><button id="dbgSetFloor" style="flex:0 0 56px;">設定</button></div>
+    <h3 style="margin-top:10px;">🧩 SYNERGY DEBUG</h3>
+    <button id="dbgUnlockAllSyn">全シナジー解禁</button>
+    <div class="dbgRow"><select id="dbgTagSelect" style="flex:1;background:var(--bg-1);border:1px solid var(--line);color:var(--text);border-radius:6px;">
+      <option value="ATTACK">ATTACK</option><option value="COIN">COIN</option><option value="FEVER">FEVER</option>
+      <option value="BALL">BALL</option><option value="DEFENSE">DEFENSE</option></select>
+      <input id="dbgTagCount" type="number" placeholder="個数" style="flex:0 0 60px;"><button id="dbgSetTag" style="flex:0 0 50px;">設定</button></div>
+    <div class="dbgRow"><input id="dbgGrossGained" type="number" placeholder="RUN中累計獲得コイン設定"><button id="dbgSetGrossGained" style="flex:0 0 56px;">設定</button></div>
+    <div class="dbgRow"><select id="dbgRouteSelect" style="flex:1;background:var(--bg-1);border:1px solid var(--line);color:var(--text);border-radius:6px;">
+      <option value="battle">BATTLE</option><option value="treasure">TREASURE</option><option value="elite">ELITE</option>
+      <option value="event">EVENT</option><option value="shop">SHOP</option></select>
+      <button id="dbgForceRoute" style="flex:0 0 90px;">次の選択を強制</button></div>
+    <h3 style="margin-top:10px;">💾 SAVE DEBUG</h3>
+    <button id="dbgSaveTest">SAVE TEST (保存→復元→照合)</button>
+    <button id="dbgCorruptTest">セーブ破損テスト</button>
+    <button id="dbgDeleteRunSave">RUNセーブを削除</button>
+    <button id="dbgClose">閉じる</button>
+  `;
+  document.body.appendChild(panel);
+  let enemyStopped=false, enemyStoppedIntervalBackup=0, movingOff=false;
+  panel.querySelector("#dbgGoldenSpawn").addEventListener("click",()=>{ if(!golden && !fever.active) spawnGolden(); });
+  panel.querySelector("#dbgGoldenHit").addEventListener("click",()=>{ if(!fever.active) triggerFever(); });
+  panel.querySelector("#dbgFeverEnd").addEventListener("click",()=>{ if(fever.active) fever.timeLeft=0; });
+  panel.querySelector("#dbgMovingToggle").addEventListener("click",()=>{
+    movingOff=!movingOff;
+    const all = feverGold? feverStarts.concat([feverGold]) : feverStarts;
+    all.forEach(s=>{ if(movingOff){ s._speedBackup=s.speed; s.speed=0; } else { s.speed=s._speedBackup!==undefined? s._speedBackup : s.speed; } });
+    toast("FEVER ZONE移動: "+(movingOff?"OFF":"ON"));
+  });
+  panel.querySelector("#dbgStopEnemy").addEventListener("click",()=>{
+    if(!enemy) return;
+    enemyStopped=!enemyStopped;
+    if(enemyStopped){ enemyStoppedIntervalBackup=enemy.atkInterval; enemy.atkInterval=999999999; enemy.atkTimer=999999999; toast("敵の攻撃を停止しました"); }
+    else { enemy.atkInterval=enemyStoppedIntervalBackup; enemy.atkTimer=enemy.atkInterval; toast("敵の攻撃を再開しました"); }
+  });
+  panel.querySelector("#dbgKillEnemy").addEventListener("click",()=>{ if(running && enemy && !fever.active){ enemy.hp=0; updateEnemyBar(); onEnemyDown(); } });
+  panel.querySelector("#dbgGivePU").addEventListener("click",()=>{ const pu=POWERUPS[Math.floor(Math.random()*POWERUPS.length)]; grantPowerup(pu); toast("付与: "+pu.name); });
+  panel.querySelector("#dbgShowLog").addEventListener("click",()=>{ showCoinLog(); });
+  panel.querySelector("#dbgSetCoin").addEventListener("click",()=>{
+    const v=parseFloat(panel.querySelector("#dbgCoin").value);
+    if(!isNaN(v)){ addCoins(v-player.coin, "Debug Set"); }
+  });
+  panel.querySelector("#dbgSetCoinMult").addEventListener("click",()=>{ const v=parseFloat(panel.querySelector("#dbgCoinMult").value); if(!isNaN(v)){ player.coinMultiplier=v; } });
+  panel.querySelector("#dbgSetFeverSec").addEventListener("click",()=>{ const v=parseFloat(panel.querySelector("#dbgFeverSec").value); if(!isNaN(v)){ if(!fever.active) triggerFever(); fever.timeLeft=v*1000; } });
+  panel.querySelector("#dbgSetFeverCombo").addEventListener("click",()=>{ const v=parseInt(panel.querySelector("#dbgFeverCombo").value,10); if(!isNaN(v)){ fever.combo=v; } });
+  panel.querySelector("#dbgSetHp").addEventListener("click",()=>{ const v=parseInt(panel.querySelector("#dbgHp").value,10); if(!isNaN(v)){ player.hp=v; updatePlayerBar(); } });
+  panel.querySelector("#dbgSetAtk").addEventListener("click",()=>{ const v=parseInt(panel.querySelector("#dbgAtk").value,10); if(!isNaN(v)){ player.atk=v; updatePlayerBar(); } });
+  panel.querySelector("#dbgSetDmg").addEventListener("click",()=>{ const v=parseFloat(panel.querySelector("#dbgDmg").value); if(!isNaN(v)){ player.dmgMult=v; updatePlayerBar(); } });
+  panel.querySelector("#dbgSetCrit").addEventListener("click",()=>{ const v=parseFloat(panel.querySelector("#dbgCrit").value); if(!isNaN(v)){ player.critChance=v; updatePlayerBar(); } });
+  panel.querySelector("#dbgSetHesso").addEventListener("click",()=>{ const v=parseFloat(panel.querySelector("#dbgHesso").value); if(!isNaN(v)){ player.hessoMult=v; updateHessoGeom(); updatePlayerBar(); } });
+  panel.querySelector("#dbgSetGoldenSize").addEventListener("click",()=>{ const v=parseFloat(panel.querySelector("#dbgGoldenSize").value); if(!isNaN(v)){ player.goldenSizeBonus=v; } });
+  panel.querySelector("#dbgSetEnemyHp").addEventListener("click",()=>{ const v=parseInt(panel.querySelector("#dbgEnemyHp").value,10); if(!isNaN(v) && enemy){ enemy.hp=v; updateEnemyBar(); } });
+  panel.querySelector("#dbgSetFloor").addEventListener("click",()=>{ const v=parseInt(panel.querySelector("#dbgFloor").value,10); if(!isNaN(v) && v>=1 && v<=MAX_FLOOR && !fever.active){ currentFloor=v; setupFloor(v, isBossFloor(v)?"boss":"battle"); } });
+  panel.querySelector("#dbgUnlockAllSyn").addEventListener("click",()=>{
+    TAGS.forEach(tag=>{ player.buildTags[tag]=8; });
+    checkSetBonuses(); checkCrossSynergies();
+    player.runStats.grossGained=Math.max(player.runStats.grossGained,50000);
+    checkCoinSynergies();
+    updatePlayerBar();
+    toast("全シナジーを解禁しました");
+  });
+  panel.querySelector("#dbgSetTag").addEventListener("click",()=>{
+    const tag=panel.querySelector("#dbgTagSelect").value;
+    const v=parseInt(panel.querySelector("#dbgTagCount").value,10);
+    if(!isNaN(v)){ player.buildTags[tag]=v; checkSetBonuses(); checkCrossSynergies(); toast(`${tag} ×${v} に設定`); }
+  });
+  panel.querySelector("#dbgSetGrossGained").addEventListener("click",()=>{
+    const v=parseFloat(panel.querySelector("#dbgGrossGained").value);
+    if(!isNaN(v)){ player.runStats.grossGained=v; checkCoinSynergies(); toast("累計獲得コインを"+v+"に設定"); }
+  });
+  panel.querySelector("#dbgForceRoute").addEventListener("click",()=>{
+    _forcedRouteType=panel.querySelector("#dbgRouteSelect").value;
+    toast("次のルート選択を「"+_forcedRouteType.toUpperCase()+"」に固定");
+  });
+  panel.querySelector("#dbgSaveTest").addEventListener("click",()=>{
+    if(!player){ toast("RUN中のみ実行できます"); return; }
+    const before={ coin:player.coin, hp:player.hp, floor:currentFloor, atk:player.atk,
+      tagCount:JSON.stringify(player.buildTags), synergyCount:player.unlockedCrossSynergies.length,
+      enemyHp: enemy? enemy.hp : null };
+    saveRun(true);
+    const snap=loadRunSnapshot();
+    if(!snap){ toast("❌ SAVE TEST失敗: 保存データが読めません"); return; }
+    const after={ coin:snap.player.coin, hp:snap.player.hp, floor:snap.currentFloor, atk:snap.player.atk,
+      tagCount:JSON.stringify(snap.player.buildTags), synergyCount:snap.player.unlockedCrossSynergies.length,
+      enemyHp: snap.enemy? snap.enemy.hp : null };
+    const mismatches=Object.keys(before).filter(k=>before[k]!==after[k]);
+    if(mismatches.length===0) toast("✅ SAVE TEST成功: 保存データが完全に一致");
+    else toast("❌ SAVE TEST不一致: "+mismatches.join(", "));
+  });
+  panel.querySelector("#dbgCorruptTest").addEventListener("click",()=>{
+    try{ localStorage.setItem(RUN_KEY, "{not valid json!!"); }catch(e){}
+    const snap=loadRunSnapshot();
+    toast(snap? "✅ 破損検出→バックアップから復元できました" : "バックアップも無いため復元不可（想定内の空セーブ状態）");
+  });
+  panel.querySelector("#dbgDeleteRunSave").addEventListener("click",()=>{
+    clearRunSave(); toast("RUNセーブを削除しました");
+  });
+  panel.querySelector("#dbgClose").addEventListener("click",()=>{ panel.remove(); DEBUG_MODE_ON=false; });
+}
+
+/* ===================== START RUN ===================== */
+startRunBtn.addEventListener("click",()=>{
+  SE.click();
+  clearRunSave(); // starting fresh — this does NOT touch the permanent meta/coin data
+  player=newPlayer();
+  player.startCoin=player.coin;
+  coinLog=[{reason:"START COIN", amount:player.coin, balance:player.coin}];
+  currentFloor=1;
+  golden=null;
+  fever={active:false,timeLeft:0,duration:0,combo:0,maxCombo:0,totalHits:0,coinGained:0,speedBoosted:false};
+  feverStarts=[]; feverGold=null;
+  goldenSpawnTimer=6000+Math.random()*4000;
+  _forcedRouteType=null;
+  runActive=true;
+  titleScreen.classList.add("hidden");
+  gameScreenWrap.classList.remove("hidden");
+  requestAnimationFrame(()=>{
+    resizeCanvas();
+    if(!rafId) loop();
+    setupFloor(1,"battle");
+  });
+});
+continueBtn.addEventListener("click",()=>{
+  SE.click();
+  if(!resumeRun()){ toast("再開できるRUNがありません"); renderTitle(); }
+});
+
+/* ===================== INIT ===================== */
+updateSpeedBtn();
+renderTitle();
+
+})();
+</script>
+</body>
+</html>
