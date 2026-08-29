@@ -437,6 +437,7 @@ function saveRun(force){
       player: JSON.parse(JSON.stringify(player)),
       enemy: enemy? JSON.parse(JSON.stringify(enemy)) : null,
       currentFloor,
+      runSeed,
       coinLogTail: coinLog.slice(-40),
     };
     const s=JSON.stringify(snap);
@@ -478,9 +479,13 @@ function resumeRun(){
   player.unlockedSetBonuses=saved.unlockedSetBonuses||[];
   player.unlockedCrossSynergies=saved.unlockedCrossSynergies||[];
   player.unlockedEquipSynergies=saved.unlockedEquipSynergies||[];
+  if(!player.basePower) player.basePower=computePlayerPower(); // older saves predate Player Power tracking
+  if(!player.dpsSamples) player.dpsSamples=[];
   enemy=snap.enemy;
   currentFloor=snap.currentFloor||1;
   coinLog=snap.coinLogTail||[];
+  runSeed = (typeof snap.runSeed==="number")? snap.runSeed : Math.floor(Math.random()*1e9); // older saves predate the seed too
+  currentBoardConfig=null;
   golden=null;
   fever={active:false,timeLeft:0,duration:0,combo:0,maxCombo:0,totalHits:0,coinGained:0,speedBoosted:false};
   feverStarts=[]; feverGold=null;
@@ -887,6 +892,7 @@ function newPlayer(){
     eq_multiBallLauncher:false, eq_goldenArmor:false, eq_vampireMask:false, eq_infernoRing:false,
     eq_voidBlade:false, eq_infinityCore:false, eq_chaosArtifact:false,
     eq_fortuneBlade:false, fortuneBladeBaseHp:0, fortuneBladeAtkMult:1,
+    basePower:0, dpsSamples:[],
     eq_goldenTycoon:false, eq_ballStorm:false, eq_inferno:false, eq_bloodFrenzy:false, eq_vampireLord:false,
     runStats:{totalDamage:0,maxCombo:0,grossGained:0,grossSpent:0,powerups:[],maxFloor:1,feverCount:0,bestFeverCoin:0,maxFeverCombo:0,goldenHitCount:0,enemiesKilled:0,bossesKilled:0}
   };
@@ -908,6 +914,69 @@ function difficultyTierName(f){
   if(f<=100) return "ENDLESS";
   return "ENDLESS+";
 }
+/* ===================== PLAYER POWER (adaptive difficulty) =====================
+   A single internal number representing the player's real combat strength — combines
+   attack stats, crit, ball count/rate, equipment, and synergy bonuses. Not shown in the UI.
+   Enemy HP is then PARTIALLY (not fully) scaled to this, so strong builds still feel strong. */
+function computePlayerPower(){
+  if(!player) return 1;
+  let p = player.atk * player.dmgMult;
+  p *= 1 + player.critChance*(player.critDmgMult-1);
+  p *= Math.max(1, player.simultaneousBalls);
+  p *= (player.fireRate/2.5);
+  if(player.eq_goldenGun) p *= 1+Math.min(player.eq_goldenTycoon?0.9:0.5, player.coin/20000);
+  if(player.eq_infinityCore) p *= 1+Math.min(1.5, currentFloor*0.004);
+  if(player.eq_fortuneBlade) p *= player.fortuneBladeAtkMult||1;
+  if(player.berserker) p *= 1.25;
+  if(player.goldenWarriorLv>0) p *= 1.25;
+  if(player.ballCannon) p *= 1.12;
+  if(player.eq_thunderHammer) p *= 1.1;
+  if(player.eq_bloodSword) p *= 1.08;
+  return Math.max(1, p);
+}
+function recordDamageForDps(dmg){
+  if(!player) return;
+  if(!player.dpsSamples) player.dpsSamples=[];
+  player.dpsSamples.push({t:Date.now(), dmg});
+  const cutoff=Date.now()-10000;
+  while(player.dpsSamples.length && player.dpsSamples[0].t<cutoff) player.dpsSamples.shift();
+}
+function currentMeasuredDps(){
+  if(!player || !player.dpsSamples || player.dpsSamples.length<2) return null;
+  const span=(Date.now()-player.dpsSamples[0].t)/1000;
+  if(span<1) return null;
+  const total=player.dpsSamples.reduce((a,s)=>a+s.dmg,0);
+  return total/span;
+}
+function blendedPlayerPower(){
+  const computed=computePlayerPower();
+  const measured=currentMeasuredDps();
+  return measured? (computed*0.65 + measured*3.2*0.35) : computed; // *3.2 roughly normalizes DPS onto the same scale as computed power
+}
+// Partial-follow multiplier: player power grows -> enemy HP grows, but sub-linearly and capped,
+// so "10x stronger" never means "10x tankier enemies" (that would erase the feeling of getting stronger).
+function playerPowerMultiplier(exponent, cap){
+  if(!player || !player.basePower) return 1;
+  const ratio=Math.max(0.3, blendedPlayerPower()/player.basePower);
+  return Math.min(cap, Math.max(0.7, Math.pow(ratio, exponent)));
+}
+
+const ENEMY_ABILITY_POOL=["armor","regen","shield","enrage","reflect","dodge"];
+function assignEnemyAbilities(enemy, f, type){
+  if(type==="boss") return; // bosses already have dedicated gimmicks
+  const tier = f<=10?0 : f<=25?1 : f<=50?2 : f<=100?3 : 4;
+  if(tier<1) return; // keep the first 10 floors ability-free as a tutorial band
+  const chance = 0.15+tier*0.09;
+  if(Math.random()>=chance) return;
+  const pick=ENEMY_ABILITY_POOL[Math.floor(Math.random()*ENEMY_ABILITY_POOL.length)];
+  if(pick==="armor"){ enemy.dmgReduction=Math.min(0.55,(enemy.dmgReduction||0)+0.15); enemy.abilityLabel="🛡️ ARMOR"; }
+  else if(pick==="regen"){ enemy.regenPct=(enemy.regenPct||0)+0.012+tier*0.004; enemy.abilityLabel="💚 REGEN"; }
+  else if(pick==="shield"){ enemy.shield=Math.round(enemy.maxHp*0.25); enemy.shieldMax=enemy.shield; enemy.abilityLabel="🔷 SHIELD"; }
+  else if(pick==="enrage"){ enemy.enrage=true; enemy.abilityLabel="😡 ENRAGE"; }
+  else if(pick==="reflect"){ enemy.reflectChance=0.10+tier*0.02; enemy.abilityLabel="↩️ REFLECT"; }
+  else if(pick==="dodge"){ enemy.dodgeChance=0.08+tier*0.02; enemy.abilityLabel="💨 DODGE"; }
+}
+
 function enemyForFloor(f, type){
   let base;
   if(type==="boss"){ base = BOSSES[Math.floor((f/5-1))%BOSSES.length]; }
@@ -920,10 +989,14 @@ function enemyForFloor(f, type){
   let coinReward=Math.round(base.coinReward*(1+(sf-1)*0.15));
   if(type==="elite"){ hp=Math.round(hp*2.1); atk=Math.round(atk*1.4); interval=Math.round(interval*0.85); coinReward=Math.round(coinReward*2.2); }
   if(type==="boss"){ const bossCycle=scaledFloorValue(Math.floor(f/5)); hp=Math.round(hp*(1+bossCycle*0.45)); atk=Math.round(atk*1.6); }
+  if(type==="boss"){ hp=Math.round(hp*playerPowerMultiplier(0.32, 3.2)); } // bosses follow player power only lightly
+  else { hp=Math.round(hp*playerPowerMultiplier(0.62, 6)); } // normal/elite enemies partially scale to how strong the build actually is
   if(player) atk=Math.round(atk*(player.cursedEnemyAtk||1));
   if(player && player.eq_iceWand) interval=Math.round(interval*1.15);
   const lv=Math.max(1, Math.floor(sf*1.2));
-  return Object.assign({}, base, {maxHp:hp, hp:hp, atk, type, floor:f, lv, atkInterval:interval, atkTimer:interval, coinReward, _warned3:null});
+  const enemyObj = Object.assign({}, base, {maxHp:hp, hp:hp, atk, type, floor:f, lv, atkInterval:interval, atkTimer:interval, coinReward, _warned3:null});
+  assignEnemyAbilities(enemyObj, f, type);
+  return enemyObj;
 }
 
 /* ===================== CANVAS / PHYSICS ===================== */
@@ -932,7 +1005,9 @@ let pegs=[], balls=[];
 const GRAVITY=0.22;
 let hesso={x:0,y:0,w:20};
 let golden=null;
+let runSeed=0, currentBoardConfig=null; // random-board system: deterministic per (runSeed, floor block)
 let DEBUG_MODE_ON=false; // toggled by opening/closing the debug panel; enables GOLDEN START hitbox overlay + hit logging
+let SHOW_HITBOX_DEBUG=false; // separate toggle: visualizes peg/START/wall hitboxes
 
 function resizeCanvas(){
   const rect=boardWrap.getBoundingClientRect();
@@ -946,21 +1021,72 @@ function resizeCanvas(){
 }
 window.addEventListener("resize", ()=>{ if(!gameScreenWrap.classList.contains("hidden")) resizeCanvas(); });
 
-function generatePegs(){
-  pegs=[];
-  const rows=10, cols=8;
-  const marginTop=10, marginBottom= (fever && fever.active)? 92:52;
-  const usableH=H-marginTop-marginBottom;
+/* ===================== RANDOM BOARD TEMPLATES (seeded, safe-by-construction) ===================== */
+function mulberry32(seed){
+  let a=seed>>>0;
+  return function(){
+    a|=0; a=a+0x6D2B79F5|0;
+    let t=Math.imul(a^a>>>15, 1|a);
+    t=t+Math.imul(t^t>>>7, 61|t)^t;
+    return ((t^t>>>14)>>>0)/4294967296;
+  };
+}
+function buildGrid(rng,Wd,Hd,marginTop,marginBottom,rows,cols,jitter,skipFn){
+  const out=[];
+  const usableH=Hd-marginTop-marginBottom;
   for(let r=0;r<rows;r++){
     const y=marginTop+(usableH/(rows-1))*r;
-    const offset=(r%2===0)?0:(W/cols)/2;
+    const offset=(r%2===0)?0:(Wd/cols)/2;
     for(let c=0;c<=cols;c++){
-      let x=offset+(W/cols)*c+(Math.random()*6-3);
-      if(x<12||x>W-12) continue;
-      if(r>=rows-2 && Math.abs(x-W/2)<16) continue;
-      pegs.push({x,y});
+      let x=offset+(Wd/cols)*c+(rng()*jitter*2-jitter);
+      if(x<12||x>Wd-12) continue;
+      if(r>=rows-2 && Math.abs(x-Wd/2)<16) continue; // keep a channel open right above the START
+      if(skipFn && skipFn(x,y,r,c,Wd,Hd)) continue;
+      out.push({x,y});
     }
   }
+  return out;
+}
+const BOARD_TEMPLATES={
+  A:{name:"標準型", build:(rng,Wd,Hd,mt,mb)=>buildGrid(rng,Wd,Hd,mt,mb,10,8,6,null)},
+  B:{name:"左右分岐型", build:(rng,Wd,Hd,mt,mb)=>buildGrid(rng,Wd,Hd,mt,mb,10,8,5,
+      (x,y,r,c,Wd2)=>(r>1&&r<7)&&(Math.abs(x-Wd2*0.35)<9||Math.abs(x-Wd2*0.65)<9))},
+  C:{name:"中央集中型", build:(rng,Wd,Hd,mt,mb)=>buildGrid(rng,Wd,Hd,mt,mb,10,10,4,
+      (x,y,r,c,Wd2)=>Math.abs(x-Wd2/2)>Wd2*0.36 && rng()<0.45)},
+  D:{name:"外周型", build:(rng,Wd,Hd,mt,mb)=>buildGrid(rng,Wd,Hd,mt,mb,9,8,5,
+      (x,y,r,c,Wd2)=>Math.abs(x-Wd2/2)<Wd2*0.16 && rng()<0.6)},
+  E:{name:"ジグザグ型", build:(rng,Wd,Hd,mt,mb)=>buildGrid(rng,Wd,Hd,mt,mb,11,7,13,null)},
+  G:{name:"FEVER型", build:(rng,Wd,Hd,mt,mb)=>buildGrid(rng,Wd,Hd,mt,mb,7,6,5,null)},
+  BOSS:{name:"BOSS BOARD", build:(rng,Wd,Hd,mt,mb)=>buildGrid(rng,Wd,Hd,mt,mb,12,9,4,null)},
+};
+function validateBoard(list){
+  if(!list || list.length<10) return false;
+  return true;
+}
+function boardConfigForFloor(f){
+  const block=Math.floor((f-1)/5);
+  const seed=(runSeed + block*7919 + (isBossFloor(f)?99991:0))>>>0;
+  const rng=mulberry32(seed);
+  const templateId = isBossFloor(f) ? "BOSS" : Object.keys(BOARD_TEMPLATES).filter(k=>k!=="BOSS")[Math.floor(rng()*5)];
+  const candidates=[0.2,0.3,0.4,0.5,0.6,0.7,0.8];
+  const startXFrac=candidates[Math.floor(rng()*candidates.length)];
+  return {seed, templateId, startXFrac, block};
+}
+function ensureBoardConfig(f){
+  const desired=boardConfigForFloor(f);
+  if(!currentBoardConfig || currentBoardConfig.block!==desired.block || currentBoardConfig.templateId!==desired.templateId){
+    currentBoardConfig=desired;
+  }
+  return currentBoardConfig;
+}
+function generatePegs(){
+  const cfg=ensureBoardConfig(currentFloor||1);
+  const marginTop=10, marginBottom=(fever && fever.active)?92:52;
+  const rng=mulberry32(cfg.seed);
+  const tmpl=BOARD_TEMPLATES[cfg.templateId]||BOARD_TEMPLATES.A;
+  let result=tmpl.build(rng,W,H,marginTop,marginBottom);
+  if(!validateBoard(result)){ result=BOARD_TEMPLATES.A.build(mulberry32(cfg.seed),W,H,marginTop,marginBottom); }
+  pegs=result;
 }
 function updateHessoGeom(resetPos){
   if(!player) return;
@@ -969,7 +1095,8 @@ function updateHessoGeom(resetPos){
   hesso.w=base*boost;
   hesso.y=H-24;
   if(resetPos || !hesso.x){
-    hesso.x=W/2;
+    const cfg=currentBoardConfig || ensureBoardConfig(currentFloor||1);
+    hesso.x=W*(cfg.startXFrac||0.5);
     const speed=(32+Math.random()*18)*(1-Math.min(0.6,(player.goldenSlow||0)*0.5));
     hesso.vx=(Math.random()<0.5?-1:1)*speed;
   }
@@ -1346,6 +1473,12 @@ function drawBoard(){
   ctx.clearRect(0,0,W,H);
   ctx.fillStyle="#3a3060";
   for(const p of pegs){ ctx.beginPath(); ctx.arc(p.x,p.y,2.4,0,Math.PI*2); ctx.fill(); }
+  if(SHOW_HITBOX_DEBUG){
+    ctx.strokeStyle="rgba(255,80,80,.6)"; ctx.lineWidth=1;
+    for(const p of pegs){ ctx.beginPath(); ctx.arc(p.x,p.y,2.4+3.4,0,Math.PI*2); ctx.stroke(); } // peg + typical ball radius
+    ctx.strokeStyle="rgba(80,180,255,.8)";
+    ctx.strokeRect(0.5,0.5,W-1,H-1); // wall bounds
+  }
 
   if(fever.active){
     for(const s of feverStarts){
@@ -1356,9 +1489,14 @@ function drawBoard(){
     }
   } else {
     drawCup(hesso.x, hesso.y, hesso.w, "#ff2ec4", "rgba(255,46,196,.10)", "START", false);
+    if(SHOW_HITBOX_DEBUG){
+      ctx.strokeStyle="rgba(57,255,143,.9)"; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+      ctx.strokeRect(hesso.x-hesso.w/2, hesso.y-9, hesso.w, 20);
+      ctx.setLineDash([]);
+    }
     if(golden){
       drawCup(golden.x, golden.y, golden.w, "#ffcc33", "rgba(255,204,51,.16)", "GOLD", true);
-      if(DEBUG_MODE_ON){
+      if(DEBUG_MODE_ON || SHOW_HITBOX_DEBUG){
         const R=(golden.w/2)*1.15;
         ctx.beginPath();
         ctx.arc(golden.x, golden.y, R, 0, Math.PI*2);
@@ -1390,6 +1528,7 @@ function loop(ts){
       updateHessoMovement(dt);
       updateGoldenSystem(dt); updateEnemyTimer(dt);
       if(enemy && enemy.type==="boss") updateBossGimmick(dt);
+      updateEnemyRegen(dt);
       updateGreedCurse(dt);
     }
     tryAutoFire(dt);
@@ -1476,6 +1615,11 @@ function comboMultiplier(count){
 }
 
 function dealDamage(){
+  if(enemy.dodgeChance && Math.random()<enemy.dodgeChance){
+    popDamage("DODGE!","massive");
+    updateEnemyBar();
+    return;
+  }
   const isCrit = Math.random() < player.critChance;
   const atkBuff=player._tempAtkBuff||1; player._tempAtkBuff=1;
   const tempAtk=(player.tempAtkBoost||1);
@@ -1522,9 +1666,27 @@ function dealDamage(){
   }
   finalDmg=Math.round(finalDmg);
 
+  // SHIELD: absorbs damage before it reaches HP
+  if(enemy.shield>0){
+    const absorb=Math.min(enemy.shield, finalDmg);
+    enemy.shield-=absorb;
+    finalDmg-=absorb;
+    if(absorb>0) popDamage("🔷SHIELD -"+absorb, "");
+    if(finalDmg<=0){ updateEnemyBar(); recordDamageForDps(absorb); return; }
+  }
+
   enemy.hp=Math.max(0, enemy.hp-finalDmg);
   player.runStats.totalDamage += finalDmg;
   meta.stats.bestDamage=Math.max(meta.stats.bestDamage, finalDmg);
+  recordDamageForDps(finalDmg);
+
+  // REFLECT: some enemies bounce a portion of the damage taken back at the player
+  if(enemy.reflectChance && Math.random()<enemy.reflectChance){
+    const reflectDmg=Math.max(1, Math.round(finalDmg*0.2*(1-player.damageReduction)));
+    player.hp=Math.max(1, player.hp-reflectDmg);
+    popDamage("↩️-"+reflectDmg, "heal");
+    updatePlayerBar();
+  }
 
   // BLOOD SWORD / BLOOD FRENZY: crit heals the player
   if(isCrit && player.eq_bloodSword){
@@ -1590,6 +1752,7 @@ function enemyAttack(){
   warnFlash.classList.remove("show"); void warnFlash.offsetWidth; warnFlash.classList.add("show");
   if(player.nullifyCharge>0){ player.nullifyCharge--; toast("敵の攻撃を無効化した！"); return; }
   let dmg=Math.round(enemy.atk*(1-player.damageReduction));
+  if(enemy.enrage && enemy.maxHp>0){ dmg=Math.round(dmg*(1+(1-enemy.hp/enemy.maxHp)*0.8)); }
   if(enemy.critAgainstPlayer && Math.random()<enemy.critAgainstPlayer) dmg=Math.round(dmg*1.8);
   player.hp=Math.max(0, player.hp-dmg);
   SE.enemyAtk();
@@ -1600,6 +1763,16 @@ function enemyAttack(){
   if(player.hp<=0){
     if(player.reviveCharge>0){ player.reviveCharge--; player.hp=1; toast("死亡を回避した！"); updatePlayerBar(); }
     else { onGameOver(); }
+  }
+}
+let _regenTimer=0;
+function updateEnemyRegen(dt){
+  if(!enemy || !enemy.regenPct || enemy.hp<=0) return;
+  _regenTimer+=dt;
+  if(_regenTimer>=2000){
+    _regenTimer=0;
+    const heal=Math.round(enemy.maxHp*enemy.regenPct);
+    if(heal>0 && enemy.hp<enemy.maxHp){ enemy.hp=Math.min(enemy.maxHp, enemy.hp+heal); updateEnemyBar(); }
   }
 }
 
@@ -1965,11 +2138,13 @@ function setupFloor(f, type){
   type = type || "battle";
   golden=null; // never carry a stale GOLDEN START / boss weak-point into a new floor
   enemy=enemyForFloor(f,type==="battle"?"normal":type);
+  ensureBoardConfig(f);
+  generatePegs();
   updateHessoGeom(true);
   updateDungeonHeader(f);
   enemyVisual.textContent=enemy.emoji;
   enemyVisual.classList.toggle("boss", type==="boss");
-  eName.textContent=(type==="boss"?"👑 ":type==="elite"?"⚡ ":"")+enemy.name;
+  eName.textContent=(type==="boss"?"👑 ":type==="elite"?"⚡ ":"")+enemy.name+(enemy.abilityLabel?" ["+enemy.abilityLabel+"]":"");
   eLv.textContent="LV."+enemy.lv;
   updateEnemyBar(); updatePlayerBar();
   if(type==="boss"){
@@ -2307,6 +2482,17 @@ function openDebugPanel(){
     <button id="dbgClearEquip">装備をすべて削除</button>
     <button id="dbgForce5F">5F装備報酬を強制表示</button>
     <button id="dbgForce10F">10F大型報酬を強制表示</button>
+    <h3 style="margin-top:10px;">🎲 BOARD DEBUG</h3>
+    <div class="dbgRow"><select id="dbgBoardSelect" style="flex:1;background:var(--bg-1);border:1px solid var(--line);color:var(--text);border-radius:6px;">
+      <option value="A">BOARD A 標準型</option><option value="B">BOARD B 左右分岐型</option>
+      <option value="C">BOARD C 中央集中型</option><option value="D">BOARD D 外周型</option>
+      <option value="E">BOARD E ジグザグ型</option><option value="G">BOARD G FEVER型</option>
+      <option value="BOSS">BOSS BOARD</option></select>
+      <button id="dbgSetBoard" style="flex:0 0 56px;">適用</button></div>
+    <button id="dbgRandomBoard">ランダムな盤面に変更</button>
+    <button id="dbgRegenBoard">現在の盤面を再生成</button>
+    <button id="dbgShowHitbox">当たり判定の表示 ON/OFF</button>
+    <div id="dbgPowerInfo" style="font-size:9.5px;color:var(--text-dim);font-family:monospace;margin:6px 0;"></div>
     <h3 style="margin-top:10px;">💾 SAVE DEBUG</h3>
     <button id="dbgSaveTest">SAVE TEST (保存→復元→照合)</button>
     <button id="dbgCorruptTest">セーブ破損テスト</button>
@@ -2314,6 +2500,16 @@ function openDebugPanel(){
     <button id="dbgClose">閉じる</button>
   `;
   document.body.appendChild(panel);
+  if(player){
+    const dpm1=playerPowerMultiplier(0.62,6), dpm2=playerPowerMultiplier(0.32,3.2);
+    const measured=currentMeasuredDps();
+    panel.querySelector("#dbgPowerInfo").innerHTML =
+      `PLAYER POWER: ${computePlayerPower().toFixed(0)} (base ${Math.round(player.basePower||0)})<br>`+
+      `CURRENT DPS(10s): ${measured? measured.toFixed(0):"—"}<br>`+
+      `ENEMY HP MULT: normal×${dpm1.toFixed(2)} / boss×${dpm2.toFixed(2)}<br>`+
+      `FLOOR SCALING: floor ${currentFloor} → scaledFloorValue ${scaledFloorValue(currentFloor).toFixed(1)} (${difficultyTierName(currentFloor)})<br>`+
+      `BOARD: ${currentBoardConfig? currentBoardConfig.templateId:"-"} / seed ${runSeed}`;
+  }
   let enemyStopped=false, enemyStoppedIntervalBackup=0, movingOff=false;
   panel.querySelector("#dbgGoldenSpawn").addEventListener("click",()=>{ if(!golden && !fever.active) spawnGolden(); });
   panel.querySelector("#dbgGoldenHit").addEventListener("click",()=>{ if(!fever.active) triggerFever(); });
@@ -2394,6 +2590,31 @@ function openDebugPanel(){
     if(!player) return;
     await showMajorReward();
   });
+  panel.querySelector("#dbgSetBoard").addEventListener("click",()=>{
+    if(!player) return;
+    const id=panel.querySelector("#dbgBoardSelect").value;
+    currentBoardConfig={seed: (runSeed+Math.floor(Math.random()*99999))>>>0, templateId:id, startXFrac:0.5, block:-1};
+    generatePegs(); updateHessoGeom(true);
+    toast("BOARD: "+id+" を適用しました");
+  });
+  panel.querySelector("#dbgRandomBoard").addEventListener("click",()=>{
+    if(!player) return;
+    const ids=Object.keys(BOARD_TEMPLATES).filter(k=>k!=="BOSS");
+    const id=ids[Math.floor(Math.random()*ids.length)];
+    currentBoardConfig={seed:Math.floor(Math.random()*1e9), templateId:id, startXFrac:[0.2,0.3,0.4,0.5,0.6,0.7,0.8][Math.floor(Math.random()*7)], block:-1};
+    generatePegs(); updateHessoGeom(true);
+    toast("ランダム盤面: "+id);
+  });
+  panel.querySelector("#dbgRegenBoard").addEventListener("click",()=>{
+    if(!player || !currentBoardConfig) return;
+    currentBoardConfig.seed=Math.floor(Math.random()*1e9);
+    generatePegs();
+    toast("盤面を再生成しました");
+  });
+  panel.querySelector("#dbgShowHitbox").addEventListener("click",()=>{
+    SHOW_HITBOX_DEBUG=!SHOW_HITBOX_DEBUG;
+    toast("当たり判定の表示: "+(SHOW_HITBOX_DEBUG?"ON":"OFF"));
+  });
   panel.querySelector("#dbgSaveTest").addEventListener("click",()=>{
     if(!player){ toast("RUN中のみ実行できます"); return; }
     const before={ coin:player.coin, hp:player.hp, floor:currentFloor, atk:player.atk,
@@ -2426,6 +2647,7 @@ startRunBtn.addEventListener("click",()=>{
   clearRunSave(); // starting fresh — this does NOT touch the permanent meta/coin data
   player=newPlayer();
   player.startCoin=player.coin;
+  player.basePower=computePlayerPower();
   coinLog=[{reason:"START COIN", amount:player.coin, balance:player.coin}];
   currentFloor=1;
   golden=null;
@@ -2434,6 +2656,8 @@ startRunBtn.addEventListener("click",()=>{
   goldenSpawnTimer=6000+Math.random()*4000;
   _forcedRouteType=null;
   runActive=true;
+  runSeed=Math.floor(Math.random()*1e9);
+  currentBoardConfig=null;
   titleScreen.classList.add("hidden");
   gameScreenWrap.classList.remove("hidden");
   requestAnimationFrame(()=>{
