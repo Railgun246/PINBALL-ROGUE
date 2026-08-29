@@ -339,11 +339,17 @@ html,body{margin:0;padding:0;height:100%;background:var(--bg-0);color:var(--text
 /* ===================== PREVENT MOBILE ZOOM FROM RAPID TAPPING ===================== */
 // touch-action:manipulation (CSS) already blocks most double-tap-zoom, but some WebKit
 // versions still zoom on fast repeated taps unless we also intercept it directly here.
-let _lastTouchEnd=0;
+// IMPORTANT: only block taps that are close in BOTH time AND position — that's what an
+// actual double-tap-zoom gesture looks like. Blocking on time alone was swallowing normal
+// rapid taps on different buttons/cards (e.g. equipment/powerup selection wouldn't respond).
+let _lastTouchEnd=0, _lastTouchX=-999, _lastTouchY=-999;
 document.addEventListener("touchend", (e)=>{
   const now=Date.now();
-  if(now-_lastTouchEnd<=350){ e.preventDefault(); } // treat as a double/rapid tap — block the zoom gesture
-  _lastTouchEnd=now;
+  const t = e.changedTouches && e.changedTouches[0];
+  const x = t? t.clientX : -999, y = t? t.clientY : -999;
+  const dist = Math.hypot(x-_lastTouchX, y-_lastTouchY);
+  if(now-_lastTouchEnd<=350 && dist<25){ e.preventDefault(); } // same spot, fast — genuine double-tap-zoom
+  _lastTouchEnd=now; _lastTouchX=x; _lastTouchY=y;
 }, {passive:false});
 document.addEventListener("gesturestart", (e)=>e.preventDefault()); // blocks pinch-zoom on iOS Safari
 document.addEventListener("dblclick", (e)=>e.preventDefault());
@@ -672,6 +678,9 @@ const EQUIPMENT_POOL=[
     desc:"所持コインが多いほど攻撃力が上昇する（コインビルドと好相性）",apply:p=>{p.eq_goldenGun=true;}},
   {id:"multiBallLauncher",slot:"WEAPON",rarity:"epic",name:"🎱 MULTI BALL LAUNCHER",tags:["BALL","MULTI","FEVER"],
     desc:"同時発射数+1。DOUBLE/TRIPLE BALLと強力なシナジーを持つ",apply:p=>{p.eq_multiBallLauncher=true; p.simultaneousBalls=Math.min(5,p.simultaneousBalls+1);}},
+  {id:"fortuneBlade",slot:"WEAPON",rarity:"epic",name:"💎 FORTUNE BLADE",tags:["COIN","ATTACK","LIFE"],
+    desc:"プレイ中に稼いだ累計コインが多いほど攻撃力と最大HPが上昇し続ける（ソフトキャップあり）",
+    apply:p=>{ p.eq_fortuneBlade=true; p.fortuneBladeBaseHp=p.maxHp; p.fortuneBladeAtkMult=1; updateFortuneBlade(); }},
   {id:"cursedBlade",slot:"WEAPON",rarity:"legendary",name:"☠️ CURSED BLADE",tags:["ATTACK","LIFE"],isCursed:true,
     desc:"攻撃力が大幅に上昇する",curse:"ただし装備中、一定時間ごとにHPを失う",
     apply:p=>{p.atk=Math.round(p.atk*1.6); p.greedCurse=true;}},
@@ -758,11 +767,20 @@ function addCoins(amount, reason){
   if(coinLog.length>200) coinLog.shift();
   meta.coin = player.coin;
   saveMeta();
+  updateFortuneBlade();
   updatePlayerBar();
   checkCoinSynergies();
   saveRun();
 }
 function spendCoins(amount, reason){ addCoins(-Math.abs(amount), reason); }
+// FORTUNE BLADE: ATK and max HP keep growing with the run's total coins earned (soft-capped so it doesn't explode)
+function updateFortuneBlade(){
+  if(!player || !player.eq_fortuneBlade) return;
+  const bonus=Math.min(1.2, player.runStats.grossGained/80000); // reaches the soft cap around 80k+ total coins earned
+  const newMaxHp=Math.round(player.fortuneBladeBaseHp*(1+bonus*0.6));
+  if(newMaxHp>player.maxHp){ const delta=newMaxHp-player.maxHp; player.maxHp=newMaxHp; player.hp+=delta; }
+  player.fortuneBladeAtkMult=1+bonus*0.7;
+}
 
 /* ===================== BUILD SYNERGY LOGIC ===================== */
 function grantPowerup(pu){
@@ -856,6 +874,7 @@ function newPlayer(){
     eq_bloodSword:false, eq_flameCannon:false, eq_thunderHammer:false, eq_iceWand:false, eq_goldenGun:false,
     eq_multiBallLauncher:false, eq_goldenArmor:false, eq_vampireMask:false, eq_infernoRing:false,
     eq_voidBlade:false, eq_infinityCore:false, eq_chaosArtifact:false,
+    eq_fortuneBlade:false, fortuneBladeBaseHp:0, fortuneBladeAtkMult:1,
     eq_goldenTycoon:false, eq_ballStorm:false, eq_inferno:false, eq_bloodFrenzy:false, eq_vampireLord:false,
     runStats:{totalDamage:0,maxCombo:0,grossGained:0,grossSpent:0,powerups:[],maxFloor:1,feverCount:0,bestFeverCoin:0,maxFeverCombo:0,goldenHitCount:0,enemiesKilled:0,bossesKilled:0}
   };
@@ -1464,6 +1483,8 @@ function dealDamage(){
   }
   // INFINITY CORE: grows with how deep the run currently is
   if(player.eq_infinityCore){ dmg *= 1 + Math.min(1.5, currentFloor*0.004); }
+  // FORTUNE BLADE: grows with total coins earned this run (max HP grows separately via updateFortuneBlade)
+  if(player.eq_fortuneBlade){ dmg *= player.fortuneBladeAtkMult; }
   let ballCannonHit=false;
   if(player.ballCannon && player.comboCount>0 && player.comboCount%4===0){ dmg*=1.5; ballCannonHit=true; }
   let chainLightning=false;
@@ -1768,10 +1789,9 @@ function showMajorReward(){
       card.innerHTML=`<div class="puRarity">${pu.rarity.toUpperCase()}</div><div class="puCat">${pu.tag}</div>
         <div class="puName">${pu.name}</div><div class="puDesc">${pu.desc}</div>${pu.isCursed?`<div class="puCurse">⚠️ ${pu.curse}</div>`:""}`;
       card.addEventListener("click",()=>{
-        grantPowerup(pu);
-        SE.powerup();
-        wrap.remove();
-        resolve();
+        try{ grantPowerup(pu); SE.powerup(); }
+        catch(err){ console.error("grantPowerup failed", err); }
+        finally{ wrap.remove(); resolve(); }
       });
       cardsWrap.appendChild(card);
     });
@@ -1846,12 +1866,13 @@ function showEquipmentReward(f){
         ${item.isCursed?`<div class="puCurse">⚠️ ${item.curse}</div>`:""}
         <div class="puDesc" style="color:var(--neon-cyan);margin-top:2px;">タグ: ${(item.tags||[]).join(" / ")}</div>`;
       card.addEventListener("click",()=>{
-        const replaced=equipItem(item);
-        SE.powerup();
-        showBigMsg("EQUIPMENT GET!\n"+item.name,"var(--neon-gold)");
-        if(replaced) toast(`${slotLabel[item.slot]}の上限のため「${replaced}」が表示欄から外れました（効果は継続します）`);
-        wrap.remove();
-        resolve();
+        try{
+          const replaced=equipItem(item);
+          SE.powerup();
+          showBigMsg("EQUIPMENT GET!\n"+item.name,"var(--neon-gold)");
+          if(replaced) toast(`${slotLabel[item.slot]}の上限のため「${replaced}」が表示欄から外れました（効果は継続します）`);
+        }catch(err){ console.error("equipItem failed", err); }
+        finally{ wrap.remove(); resolve(); }
       });
       cardsWrap.appendChild(card);
     });
@@ -1894,8 +1915,8 @@ function showPowerupSelect(){
       card.innerHTML=`<div class="puRarity">${pu.rarity.toUpperCase()}</div><div class="puCat">${TAG_ICON[pu.tag]||""} ${pu.tag}</div>
         <div class="puName">${pu.name}</div><div class="puDesc">${pu.desc}</div>${pu.isCursed?`<div class="puCurse">⚠️ ${pu.curse}</div>`:""}`;
       card.addEventListener("click", async ()=>{
-        grantPowerup(pu);
-        SE.powerup();
+        try{ grantPowerup(pu); SE.powerup(); }
+        catch(err){ console.error("grantPowerup failed", err); }
         wrap.remove();
         paused=false;
         await advanceAfterRoom();
