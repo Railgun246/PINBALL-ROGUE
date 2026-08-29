@@ -465,7 +465,19 @@ function clearRunSave(){
 function resumeRun(){
   const snap=loadRunSnapshot();
   if(!snap) return false;
-  player=snap.player;
+  // Schema migration: older saves may predate fields added since (equipment, buildTags, etc).
+  // Merge onto a fresh player template so anything missing gets a safe default instead of
+  // being undefined (which previously froze the game on death / opening BUILD).
+  const fresh=newPlayer();
+  const saved=snap.player||{};
+  player=Object.assign(fresh, saved);
+  player.runStats=Object.assign({}, fresh.runStats, saved.runStats||{});
+  player.buildTags=Object.assign({}, fresh.buildTags, saved.buildTags||{});
+  player.equipment=Object.assign({WEAPON:[],ARMOR:[],ACCESSORY:[],ARTIFACT:[]}, saved.equipment||{});
+  player.nail=Object.assign({gold:0}, saved.nail||{});
+  player.unlockedSetBonuses=saved.unlockedSetBonuses||[];
+  player.unlockedCrossSynergies=saved.unlockedCrossSynergies||[];
+  player.unlockedEquipSynergies=saved.unlockedEquipSynergies||[];
   enemy=snap.enemy;
   currentFloor=snap.currentFloor||1;
   coinLog=snap.coinLogTail||[];
@@ -2018,59 +2030,66 @@ buildBtn.addEventListener("click",()=>{
   if(!player) return;
   const wasPaused=paused;
   paused=true; releaseFire();
-  const tagRows = TAGS.map(tag=>{
-    const count=player.buildTags[tag]||0;
-    const defs=SET_BONUS_DEFS[tag]||[];
-    const maxCount=defs.length? defs[defs.length-1].count : 8;
-    const pct=Math.min(100, Math.round(count/maxCount*100));
-    return `<div class="tagRow"><span>${TAG_ICON[tag]} ${tag} ×${count}</span>
-      <span class="tagBar"><span class="tagBarFill" style="width:${pct}%"></span></span>
-      <span style="font-size:10px;color:var(--text-dim);white-space:nowrap;">${nextSetBonusHint(tag)}</span></div>`;
-  }).join("");
-  const unlockedSet = player.unlockedSetBonuses.length
-    ? player.unlockedSetBonuses.map(uid=>{
-        const [tag,cnt]=uid.split(":");
-        const def=(SET_BONUS_DEFS[tag]||[]).find(d=>String(d.count)===cnt);
-        return def? `✅ ${TAG_ICON[tag]} ${def.name}` : "";
-      }).join("<br>")
-    : "まだ発動していません";
-  const crossHints = CROSS_SYNERGY_DEFS.map(def=>{
-    const done=player.unlockedCrossSynergies.includes(def.id);
-    if(done) return `✅ ${def.name} — ${def.desc}`;
-    const need=Object.keys(def.tags).map(t=>{
-      const have=player.buildTags[t]||0, req=def.tags[t];
-      return have>=req? `${TAG_ICON[t]}✓` : `${TAG_ICON[t]}あと${req-have}`;
-    }).join(" / ");
-    const tagLabel=Object.keys(def.tags).map(t=>TAG_ICON[t]).join("×");
-    return `🔒 ${tagLabel} ${def.name} — ${need}`;
-  }).join("<br>");
-  const gwText = player.goldenWarriorLv>0
-    ? `🪙 GOLDEN WARRIOR Lv.${player.goldenWarriorLv} 発動中`
-    : `🪙 GOLDEN WARRIOR 未発動（累計コイン${Math.floor(player.runStats.grossGained).toLocaleString()} / ATTACK×${player.buildTags.ATTACK||0}）`;
-  const slotIcon={WEAPON:"⚔️",ARMOR:"🛡️",ACCESSORY:"💍",ARTIFACT:"🔮"};
-  const equipRows = Object.entries(player.equipment).map(([slot,list])=>{
-    const cap=EQUIP_SLOTS[slot];
-    const shown = list.length? list.map(it=>it.name).join(", ") : "（なし）";
-    return `${slotIcon[slot]} ${slot} (${list.length}/${cap}): ${shown}`;
-  }).join("<br>");
-  const equipSynHints = EQUIP_SYNERGY_DEFS.map(def=>{
-    const done=player.unlockedEquipSynergies.includes(def.id);
-    return done? `✅ ${def.name} — ${def.desc}` : `🔒 ${def.name}`;
-  }).join("<br>");
-  const wrap=document.createElement("div");
-  wrap.className="modalWrap";
-  wrap.innerHTML=`<div class="modalBox">
-    <h2>🧩 BUILD</h2>
-    ${tagRows}
-    <div class="synList"><b>SET BONUS</b><br>${unlockedSet}</div>
-    <div class="synList"><b>SYNERGY</b><br>${crossHints}</div>
-    <div class="synList">${gwText}</div>
-    <div class="synList"><b>EQUIPMENT</b><br>${equipRows}</div>
-    <div class="synList"><b>EQUIP SYNERGY</b><br>${equipSynHints}</div>
-    <button class="modalBtn" id="buildClose">閉じる</button>
-  </div>`;
-  document.body.appendChild(wrap);
-  wrap.querySelector("#buildClose").addEventListener("click",()=>{ wrap.remove(); paused=wasPaused; });
+  try{
+    const tagRows = TAGS.map(tag=>{
+      const count=player.buildTags[tag]||0;
+      const defs=SET_BONUS_DEFS[tag]||[];
+      const maxCount=defs.length? defs[defs.length-1].count : 8;
+      const pct=Math.min(100, Math.round(count/maxCount*100));
+      return `<div class="tagRow"><span>${TAG_ICON[tag]} ${tag} ×${count}</span>
+        <span class="tagBar"><span class="tagBarFill" style="width:${pct}%"></span></span>
+        <span style="font-size:10px;color:var(--text-dim);white-space:nowrap;">${nextSetBonusHint(tag)}</span></div>`;
+    }).join("");
+    const unlockedSet = (player.unlockedSetBonuses||[]).length
+      ? player.unlockedSetBonuses.map(uid=>{
+          const [tag,cnt]=uid.split(":");
+          const def=(SET_BONUS_DEFS[tag]||[]).find(d=>String(d.count)===cnt);
+          return def? `✅ ${TAG_ICON[tag]} ${def.name}` : "";
+        }).join("<br>")
+      : "まだ発動していません";
+    const crossHints = CROSS_SYNERGY_DEFS.map(def=>{
+      const done=(player.unlockedCrossSynergies||[]).includes(def.id);
+      if(done) return `✅ ${def.name} — ${def.desc}`;
+      const need=Object.keys(def.tags).map(t=>{
+        const have=player.buildTags[t]||0, req=def.tags[t];
+        return have>=req? `${TAG_ICON[t]}✓` : `${TAG_ICON[t]}あと${req-have}`;
+      }).join(" / ");
+      const tagLabel=Object.keys(def.tags).map(t=>TAG_ICON[t]).join("×");
+      return `🔒 ${tagLabel} ${def.name} — ${need}`;
+    }).join("<br>");
+    const gwText = player.goldenWarriorLv>0
+      ? `🪙 GOLDEN WARRIOR Lv.${player.goldenWarriorLv} 発動中`
+      : `🪙 GOLDEN WARRIOR 未発動（累計コイン${Math.floor(player.runStats.grossGained).toLocaleString()} / ATTACK×${player.buildTags.ATTACK||0}）`;
+    const slotIcon={WEAPON:"⚔️",ARMOR:"🛡️",ACCESSORY:"💍",ARTIFACT:"🔮"};
+    const equipment = player.equipment || {WEAPON:[],ARMOR:[],ACCESSORY:[],ARTIFACT:[]};
+    const equipRows = Object.entries(equipment).map(([slot,list])=>{
+      const cap=EQUIP_SLOTS[slot];
+      const shown = list.length? list.map(it=>it.name).join(", ") : "（なし）";
+      return `${slotIcon[slot]} ${slot} (${list.length}/${cap}): ${shown}`;
+    }).join("<br>");
+    const equipSynHints = EQUIP_SYNERGY_DEFS.map(def=>{
+      const done=(player.unlockedEquipSynergies||[]).includes(def.id);
+      return done? `✅ ${def.name} — ${def.desc}` : `🔒 ${def.name}`;
+    }).join("<br>");
+    const wrap=document.createElement("div");
+    wrap.className="modalWrap";
+    wrap.innerHTML=`<div class="modalBox">
+      <h2>🧩 BUILD</h2>
+      ${tagRows}
+      <div class="synList"><b>SET BONUS</b><br>${unlockedSet}</div>
+      <div class="synList"><b>SYNERGY</b><br>${crossHints}</div>
+      <div class="synList">${gwText}</div>
+      <div class="synList"><b>EQUIPMENT</b><br>${equipRows}</div>
+      <div class="synList"><b>EQUIP SYNERGY</b><br>${equipSynHints}</div>
+      <button class="modalBtn" id="buildClose">閉じる</button>
+    </div>`;
+    document.body.appendChild(wrap);
+    wrap.querySelector("#buildClose").addEventListener("click",()=>{ wrap.remove(); paused=wasPaused; });
+  }catch(err){
+    console.error("BUILD modal failed", err);
+    paused=wasPaused;
+    toast("BUILD画面の表示に失敗しました");
+  }
 });
 
 /* ===================== PAUSE MENU ===================== */
@@ -2128,7 +2147,27 @@ function showCoinLog(){
 function onGameOver(){
   running=false;
   SE.gameover();
-  showEndModal(false);
+  try{
+    showEndModal(false);
+  }catch(err){
+    console.error("showEndModal failed, showing minimal fallback", err);
+    showMinimalGameOverFallback();
+  }
+}
+function showMinimalGameOverFallback(){
+  clearRunSave();
+  const wrap=document.createElement("div");
+  wrap.className="modalWrap";
+  wrap.innerHTML=`<div class="modalBox"><h2>💀 YOU DIED</h2>
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">結果画面の表示中にエラーが発生しましたが、進行データは保護されています。</div>
+    <button class="modalBtn" id="fallbackBackTitle">タイトルへ戻る</button></div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector("#fallbackBackTitle").addEventListener("click",()=>{
+    wrap.remove();
+    gameScreenWrap.classList.add("hidden");
+    titleScreen.classList.remove("hidden");
+    renderTitle();
+  });
 }
 function showEndModal(cleared, manualExit){
   // Final coin is taken directly from player.coin, which has been mirrored into the
